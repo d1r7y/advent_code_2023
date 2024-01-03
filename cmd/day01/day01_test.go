@@ -6,48 +6,66 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseElfCalorieList_EmptyString(t *testing.T) {
-	list, err := ParseElfCalorieList("")
-	assert.NoError(t, err)
-	assert.Len(t, list, 0)
+func TestCalculateCalibrationValue(t *testing.T) {
+	type calculateCalibrationValueTest struct {
+		value int
+		line  string
+	}
+
+	tests := []calculateCalibrationValueTest{
+		{12, "1abc2"},
+		{38, "pqr3stu8vwx"},
+		{15, "a1b2c3d4e5f"},
+		{77, "treb7uchet"},
+		{29, "two1nine"},
+		{83, "eightwothree"},
+		{13, "abcone2threexyz"},
+		{24, "xtwone3four"},
+		{42, "4nineeightseven2"},
+		{14, "zoneight234"},
+		{76, "7pqrstsixteen"},
+		{91, "vmtkqpjftc9twonej"},
+	}
+
+	for _, test := range tests {
+		v, err := CalculateCalibrationValue(test.line)
+		assert.NoError(t, err, "unexpected error")
+		assert.Equal(t, test.value, v, "unexpected calibration value")
+	}
 }
 
-func TestParseElfCalorieList_Newlines(t *testing.T) {
-	list, err := ParseElfCalorieList("\n\n\n")
-	assert.NoError(t, err)
-	assert.Len(t, list, 0)
-}
+func TestDigitFromString(t *testing.T) {
+	type testDigitFromStringTest struct {
+		str           string
+		digit         int
+		consumed      int
+		expectedError bool
+	}
 
-func TestParseElfCalorieList_OneElf_OneItem(t *testing.T) {
-	list, err := ParseElfCalorieList("1000")
-	assert.NoError(t, err)
-	assert.Len(t, list, 1)
-	assert.Equal(t, list[0], 1000)
-}
+	tests := []testDigitFromStringTest{
+		{"zero", -1, 0, true},
+		{"one", 1, len("one"), false},
+		{"two", 2, len("two"), false},
+		{"three", 3, len("three"), false},
+		{"four", 4, len("four"), false},
+		{"five", 5, len("five"), false},
+		{"six", 6, len("six"), false},
+		{"seven", 7, len("seven"), false},
+		{"eight", 8, len("eight"), false},
+		{"nine", 9, len("nine"), false},
+		{"ten", -1, 0, true},
+		{"sixteen", 6, len("six"), false},
+		{"eightwothree", 8, len("eight"), false},
+	}
 
-func TestParseElfCalorieList_OneElf_UnexpectedItem(t *testing.T) {
-	list, err := ParseElfCalorieList("asdf")
-	assert.Error(t, err)
-	assert.Len(t, list, 0)
-}
-
-func TestParseElfCalorieList_OneElf_MultipleItemsOnLine(t *testing.T) {
-	list, err := ParseElfCalorieList("1000 2000")
-	assert.Error(t, err)
-	assert.Len(t, list, 0)
-}
-
-func TestParseElfCalorieList_OneElf_TwoItems(t *testing.T) {
-	list, err := ParseElfCalorieList("1000\n3000")
-	assert.NoError(t, err)
-	assert.Len(t, list, 1)
-	assert.Equal(t, list[0], 4000)
-}
-
-func TestParseElfCalorieList_TwoElves_TwoItems(t *testing.T) {
-	list, err := ParseElfCalorieList("1000\n3000\n\n4000\n5000")
-	assert.NoError(t, err)
-	assert.Len(t, list, 2)
-	assert.Equal(t, list[0], 4000)
-	assert.Equal(t, list[1], 9000)
+	for _, test := range tests {
+		d, c, err := DigitFromString(test.str)
+		if test.expectedError {
+			assert.Error(t, err)
+		} else {
+			assert.NoError(t, err)
+			assert.Equal(t, test.digit, d)
+			assert.Equal(t, test.consumed, c)
+		}
+	}
 }

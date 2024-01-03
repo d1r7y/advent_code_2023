@@ -1,5 +1,5 @@
 /*
-Copyright © 2022 Cameron Esfahani <dirty@mac.com>
+Copyright © 2022 Cameron Esfahani
 */
 package day03
 

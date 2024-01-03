@@ -1,5 +1,5 @@
 /*
-Copyright © 2023 Cameron Esfahani <dirty@mac.com>
+Copyright © 2023 Cameron Esfahani
 */
 package day14
 
