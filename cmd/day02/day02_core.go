@@ -3,259 +3,171 @@ package day02
 import (
 	"fmt"
 	"log"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
-type Shape int
-
-const (
-	Rock Shape = iota
-	Paper
-	Scissor
-)
-
-type Result int
-
-const (
-	Win Result = iota
-	Lose
-	Draw
-)
-
-func parseFirstShape(str string) (Shape, error) {
-	shapes := map[string]Shape{
-		"A": Rock,
-		"B": Paper,
-		"C": Scissor,
-	}
-
-	if shape, ok := shapes[str]; ok {
-		return shape, nil
-	}
-
-	return Rock, fmt.Errorf("invalid shape '%s'", str)
+type CubePull struct {
+	RedCount   int
+	GreenCount int
+	BlueCount  int
 }
 
-func parseSecondShape(str string) (Shape, error) {
-	shapes := map[string]Shape{
-		"X": Rock,
-		"Y": Paper,
-		"Z": Scissor,
-	}
-
-	if shape, ok := shapes[str]; ok {
-		return shape, nil
-	}
-
-	return Rock, fmt.Errorf("invalid shape '%s'", str)
+type Game struct {
+	Id    int
+	Pulls []CubePull
 }
 
-func parseResult(str string) (Result, error) {
-	results := map[string]Result{
-		"X": Lose,
-		"Y": Draw,
-		"Z": Win,
+func ParseGame(line string) (Game, error) {
+	game := Game{Pulls: make([]CubePull, 0)}
+
+	gameAndRemainingRE := regexp.MustCompile(`\s*Game\s(\d+):(.*)`)
+	gameAndRemainingMatches := gameAndRemainingRE.FindSubmatch([]byte(line))
+	if gameAndRemainingMatches == nil {
+		return game, fmt.Errorf("invalid game: '%s'", line)
+	}
+	gameID, err := strconv.Atoi(string(gameAndRemainingMatches[1]))
+	if err != nil {
+		return game, err
+	}
+	if gameID <= 0 {
+		return game, fmt.Errorf("invalid id")
 	}
 
-	if result, ok := results[str]; ok {
-		return result, nil
-	}
+	game.Id = gameID
 
-	return Lose, fmt.Errorf("invalid result '%s'", str)
-}
+	for _, p := range strings.Split(string(gameAndRemainingMatches[2]), ";") {
+		var pull CubePull
 
-func getShapeScore(s Shape) int {
-	scores := map[Shape]int{
-		Rock:    1,
-		Paper:   2,
-		Scissor: 3,
-	}
+		for _, m := range strings.Split(p, ",") {
+			countAndColorRE := regexp.MustCompile(`(\d+)\s(red|green|blue)`)
+			countAndColor := countAndColorRE.FindSubmatch([]byte(m))
+			count, err := strconv.Atoi(string(countAndColor[1]))
+			if err != nil {
+				return game, err
+			}
 
-	return scores[s]
-}
+			if count <= 0 {
+				return game, fmt.Errorf("invalid count")
+			}
 
-func getResultScore(r Result) int {
-	scores := map[Result]int{
-		Lose: 0,
-		Draw: 3,
-		Win:  6,
-	}
+			color := string(countAndColor[2])
 
-	return scores[r]
-}
-
-func getShapeToWin(s Shape) Shape {
-	switch s {
-	case Rock:
-		return Paper
-	case Paper:
-		return Scissor
-	case Scissor:
-		return Rock
-	default:
-		panic(fmt.Errorf("unknown shape: '%v'", s))
-	}
-}
-
-func getShapeToLose(s Shape) Shape {
-	switch s {
-	case Rock:
-		return Scissor
-	case Paper:
-		return Rock
-	case Scissor:
-		return Paper
-	default:
-		panic(fmt.Errorf("unknown shape: '%v'", s))
-	}
-}
-
-func getShapeForResult(r Result, s Shape) Shape {
-	switch r {
-	case Draw:
-		return s
-	case Win:
-		return getShapeToWin(s)
-	case Lose:
-		return getShapeToLose(s)
-	default:
-		panic(fmt.Errorf("unknown result: '%v'", r))
-	}
-}
-
-type Round struct {
-	shape1 Shape
-	shape2 Shape
-}
-
-func NewRound(s1, s2 Shape) Round {
-	return Round{shape1: s1, shape2: s2}
-}
-
-// Result What's the result of this round?  shape1 is the shape played by the other player, shape2 is your shape.
-func (r Round) Result() Result {
-	// Check if the same shapes were played.
-	if r.shape1 == r.shape2 {
-		return Draw
-	}
-
-	switch r.shape2 {
-	case Rock:
-		if r.shape1 == Scissor {
-			return Win
+			switch color {
+			case "red":
+				pull.RedCount += count
+			case "green":
+				pull.GreenCount += count
+			case "blue":
+				pull.BlueCount += count
+			}
 		}
-		return Lose
-	case Paper:
-		if r.shape1 == Rock {
-			return Win
-		}
-		return Lose
-	case Scissor:
-		if r.shape1 == Paper {
-			return Win
-		}
-		return Lose
-	default:
-		panic(fmt.Errorf("unknown shape: '%v'", r.shape2))
+
+		game.Pulls = append(game.Pulls, pull)
 	}
+
+	return game, nil
 }
 
-// Result What's the score of this round?
-func (r Round) Score() int {
-	score := getShapeScore(r.shape2)
-	score += getResultScore(r.Result())
-	return score
-}
-
-func ParseRounds(text string, partOne bool) ([]Round, error) {
-
-	rounds := make([]Round, 0)
+func ParseGames(text string) ([]Game, error) {
+	games := make([]Game, 0)
 
 	if text == "" {
-		return rounds, nil
+		return games, nil
 	}
 
 	for _, line := range strings.Split(text, "\n") {
-		if line == "" {
-			continue
-		}
-
-		var shape1Str string
-		var shape2Str string
-		var resultStr string
-		var count int
-		var err error
-
-		if partOne {
-			count, err = fmt.Sscanln(line, &shape1Str, &shape2Str)
-		} else {
-			count, err = fmt.Sscanln(line, &shape1Str, &resultStr)
-		}
-
-		if err != nil {
-			return []Round{}, err
-		}
-
-		if count != 2 {
-			return []Round{}, fmt.Errorf("unexpected line in input '%s'", line)
-		}
-
-		var shape2 Shape
-
-		shape1, err := parseFirstShape(shape1Str)
-		if err != nil {
-			return []Round{}, err
-		}
-
-		if partOne {
-			shape2, err = parseSecondShape(shape2Str)
+		if line != "" {
+			g, err := ParseGame(line)
 			if err != nil {
-				return []Round{}, err
-			}
-		} else {
-			result, err := parseResult(resultStr)
-			if err != nil {
-				return []Round{}, err
+				return games, err
 			}
 
-			shape2 = getShapeForResult(result, shape1)
+			games = append(games, g)
 		}
-
-		round := NewRound(shape1, shape2)
-		rounds = append(rounds, round)
 	}
 
-	return rounds, nil
+	return games, nil
+}
+
+func IsGamePossible(g Game, maxRed, maxGreen, maxBlue int) bool {
+	for _, p := range g.Pulls {
+		if p.RedCount > maxRed {
+			return false
+		}
+		if p.GreenCount > maxGreen {
+			return false
+		}
+		if p.BlueCount > maxBlue {
+			return false
+		}
+	}
+
+	return true
+}
+
+func PossibleGameSum(games []Game, maxRed, maxGreen, maxBlue int) int {
+	gameIDSum := 0
+
+	for _, g := range games {
+		if IsGamePossible(g, maxRed, maxGreen, maxBlue) {
+			gameIDSum += g.Id
+		}
+	}
+
+	return gameIDSum
+}
+
+func GameMinimumCubes(g Game) (red int, green int, blue int) {
+	for _, p := range g.Pulls {
+		if p.RedCount > red {
+			red = p.RedCount
+		}
+		if p.GreenCount > green {
+			green = p.GreenCount
+		}
+		if p.BlueCount > blue {
+			blue = p.BlueCount
+		}
+	}
+
+	return red, green, blue
+}
+
+func GamePower(g Game) int {
+	red, green, blue := GameMinimumCubes(g)
+	return red * green * blue
+}
+
+func GamePowerSum(games []Game) int {
+	powerSum := 0
+
+	for _, g := range games {
+		powerSum += GamePower(g)
+	}
+
+	return powerSum
 }
 
 func day02(fileContents string) error {
-	// Part 1: What is the total score if you followed the strategy?
-	roundsPartOne, err := ParseRounds(string(fileContents), true)
+	games, err := ParseGames(string(fileContents))
 	if err != nil {
 		return err
 	}
 
-	totalScore := 0
+	// Part 1: Determine which games would have been possible if the bag had been loaded with
+	// only 12 red cubes, 13 green cubes, and 14 blue cubes. What is the sum of the IDs of those games?
+	gameIDSum := PossibleGameSum(games, 12, 13, 14)
 
-	for _, r := range roundsPartOne {
-		totalScore += r.Score()
-	}
+	log.Printf("Sum of possible game IDs: %d\n", gameIDSum)
 
-	log.Printf("Total score: %d\n", totalScore)
+	// Part 2: For each game, find the minimum set of cubes that must have been present. What is the
+	// sum of the power of these sets?
 
-	// Part 2: What is the total score if you followed the strategy, where the second item in each round
-	// is the result?
-	roundsPartTwo, err := ParseRounds(string(fileContents), false)
-	if err != nil {
-		return err
-	}
+	powerSum := GamePowerSum(games)
 
-	totalScore = 0
+	log.Printf("Sum of game powers: %d\n", powerSum)
 
-	for _, r := range roundsPartTwo {
-		totalScore += r.Score()
-	}
-
-	log.Printf("Total score: %d\n", totalScore)
 	return nil
 }

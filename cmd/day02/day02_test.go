@@ -1,284 +1,176 @@
 package day02
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetShapeScore(t *testing.T) {
-	assert.Equal(t, getShapeScore(Rock), 1)
-	assert.Equal(t, getShapeScore(Paper), 2)
-	assert.Equal(t, getShapeScore(Scissor), 3)
-}
-
-func TestGetResultScore(t *testing.T) {
-	assert.Equal(t, getResultScore(Win), 6)
-	assert.Equal(t, getResultScore(Lose), 0)
-	assert.Equal(t, getResultScore(Draw), 3)
-}
-
-func TestGetShapeToWin(t *testing.T) {
-	assert.Equal(t, getShapeToWin(Rock), Paper)
-	assert.Equal(t, getShapeToWin(Paper), Scissor)
-	assert.Equal(t, getShapeToWin(Scissor), Rock)
-}
-
-func TestGetShapeToLose(t *testing.T) {
-	assert.Equal(t, getShapeToLose(Rock), Scissor)
-	assert.Equal(t, getShapeToLose(Paper), Rock)
-	assert.Equal(t, getShapeToLose(Scissor), Paper)
-}
-
-func TestGetShapeForResult(t *testing.T) {
-	type getShapeForResultTest struct {
-		result        Result
-		shape         Shape
-		expectedShape Shape
+func TestParseGame(t *testing.T) {
+	type parseGameTest struct {
+		str           string
+		expectedError bool
+		gameID        int
 	}
 
-	tests := []getShapeForResultTest{
-		{Win, Rock, Paper},
-		{Lose, Rock, Scissor},
-		{Draw, Rock, Rock},
-
-		{Win, Paper, Scissor},
-		{Lose, Paper, Rock},
-		{Draw, Paper, Paper},
-
-		{Win, Scissor, Rock},
-		{Lose, Scissor, Paper},
-		{Draw, Scissor, Scissor},
+	tests := []parseGameTest{
+		{"Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green", false, 1},
+		{"Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue", false, 2},
+		{"Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red", false, 3},
+		{"Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red", false, 4},
+		{"Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green", false, 5},
+		{"Game zzz: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green", true, -1},
+		{"	Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green", false, 1},
 	}
 
 	for _, test := range tests {
-		assert.Equal(t, getShapeForResult(test.result, test.shape), test.expectedShape)
-	}
-}
-
-func TestParseFirstShape(t *testing.T) {
-	type parseFirstShapeTest struct {
-		shapeStr      string
-		expectedErr   bool
-		expectedShape Shape
-	}
-
-	tests := []parseFirstShapeTest{
-		{"A", false, Rock},
-		{"B", false, Paper},
-		{"C", false, Scissor},
-		{"X", true, Rock},
-		{"Y", true, Rock},
-		{"Z", true, Rock},
-
-		{"AA", true, Rock},
-		{"122345", true, Rock},
-		{"", true, Rock},
-	}
-
-	for _, test := range tests {
-		s, err := parseFirstShape(test.shapeStr)
-		if test.expectedErr {
+		game, err := ParseGame(test.str)
+		if test.expectedError {
 			assert.Error(t, err)
 		} else {
-			assert.Equal(t, s, test.expectedShape)
+			assert.NoError(t, err)
+			assert.Equal(t, test.gameID, game.Id)
 		}
 	}
 }
 
-func TestParseSecondShape(t *testing.T) {
-	type parseFirstShapeTest struct {
-		shapeStr      string
-		expectedErr   bool
-		expectedShape Shape
+func TestIsGamePossible(t *testing.T) {
+	type isGamePossibleTest struct {
+		game             Game
+		maxRed           int
+		maxGreen         int
+		maxBlue          int
+		expectedPossible bool
 	}
 
-	tests := []parseFirstShapeTest{
-		{"A", true, Rock},
-		{"B", true, Rock},
-		{"C", true, Rock},
-		{"X", false, Rock},
-		{"Y", false, Paper},
-		{"Z", false, Scissor},
+	tests := []isGamePossibleTest{
+		{Game{Id: 1, Pulls: []CubePull{
+			{RedCount: 1, GreenCount: 2, BlueCount: 3},
+		}}, math.MaxInt, math.MaxInt, math.MaxInt, true},
+		{Game{Id: 1, Pulls: []CubePull{
+			{RedCount: 2, GreenCount: 2, BlueCount: 3},
+		}}, 1, math.MaxInt, math.MaxInt, false},
+		{Game{Id: 1, Pulls: []CubePull{
+			{RedCount: 1, GreenCount: 2, BlueCount: 3},
+			{RedCount: 2, GreenCount: 2, BlueCount: 3},
+		}}, 1, math.MaxInt, math.MaxInt, false},
+		{Game{Id: 1, Pulls: []CubePull{
+			{RedCount: 0, GreenCount: 0, BlueCount: 0},
+		}}, 0, 0, 0, true},
+		{Game{Id: 1, Pulls: []CubePull{
+			{RedCount: 3, GreenCount: 4, BlueCount: 5},
+		}}, 3, 4, 5, true},
 
-		{"AA", true, Rock},
-		{"122345", true, Rock},
-		{"", true, Rock},
-	}
-
-	for _, test := range tests {
-		s, err := parseSecondShape(test.shapeStr)
-		if test.expectedErr {
-			assert.Error(t, err)
-		} else {
-			assert.Equal(t, s, test.expectedShape)
-		}
-	}
-}
-
-func TestParseResult(t *testing.T) {
-	type parseResultTest struct {
-		resultStr      string
-		expectedErr    bool
-		expectedResult Result
-	}
-
-	tests := []parseResultTest{
-		{"A", true, Lose},
-		{"B", true, Lose},
-		{"C", true, Lose},
-		{"X", false, Lose},
-		{"Y", false, Draw},
-		{"Z", false, Win},
-
-		{"AA", true, Lose},
-		{"122345", true, Lose},
-		{"", true, Lose},
-	}
-
-	for _, test := range tests {
-		s, err := parseResult(test.resultStr)
-		if test.expectedErr {
-			assert.Error(t, err)
-		} else {
-			assert.Equal(t, s, test.expectedResult)
-		}
-	}
-}
-
-func TestRoundResult(t *testing.T) {
-	type roundResultTest struct {
-		shape1 Shape
-		shape2 Shape
-		result Result
-	}
-
-	tests := []roundResultTest{
-		{Rock, Rock, Draw},
-		{Paper, Paper, Draw},
-		{Scissor, Scissor, Draw},
-
-		{Rock, Paper, Win},
-		{Paper, Rock, Lose},
-		{Rock, Scissor, Lose},
-		{Scissor, Rock, Win},
-		{Paper, Scissor, Win},
-		{Scissor, Paper, Lose},
+		// From sample data
+		{Game{Id: 1, Pulls: []CubePull{
+			{RedCount: 4, GreenCount: 0, BlueCount: 3},
+			{RedCount: 1, GreenCount: 2, BlueCount: 6},
+			{RedCount: 0, GreenCount: 2, BlueCount: 0},
+		}}, 12, 13, 14, true},
+		{Game{Id: 2, Pulls: []CubePull{
+			{RedCount: 0, GreenCount: 2, BlueCount: 1},
+			{RedCount: 1, GreenCount: 3, BlueCount: 4},
+			{RedCount: 0, GreenCount: 1, BlueCount: 1},
+		}}, 12, 13, 14, true},
+		{Game{Id: 3, Pulls: []CubePull{
+			{RedCount: 20, GreenCount: 8, BlueCount: 6},
+			{RedCount: 4, GreenCount: 13, BlueCount: 5},
+			{RedCount: 1, GreenCount: 5, BlueCount: 0},
+		}}, 12, 13, 14, false},
+		{Game{Id: 4, Pulls: []CubePull{
+			{RedCount: 3, GreenCount: 1, BlueCount: 6},
+			{RedCount: 6, GreenCount: 3, BlueCount: 0},
+			{RedCount: 14, GreenCount: 3, BlueCount: 15},
+		}}, 12, 13, 14, false},
+		{Game{Id: 4, Pulls: []CubePull{
+			{RedCount: 6, GreenCount: 3, BlueCount: 1},
+			{RedCount: 1, GreenCount: 2, BlueCount: 2},
+		}}, 12, 13, 14, true},
 	}
 
 	for _, test := range tests {
-		r := NewRound(test.shape1, test.shape2)
-		assert.Equal(t, r.Result(), test.result)
+		possible := IsGamePossible(test.game, test.maxRed, test.maxGreen, test.maxBlue)
+		assert.Equal(t, test.expectedPossible, possible)
 	}
 }
 
-func TestRoundScore(t *testing.T) {
-	type roundScoreTest struct {
-		shape1 Shape
-		shape2 Shape
-		score  int
-	}
+func TestPossibleGameSum(t *testing.T) {
+	content := `
+	Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green
+	Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue
+	Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red
+	Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
+	Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green`
 
-	tests := []roundScoreTest{
-		{Rock, Rock, 4},
-		{Paper, Paper, 5},
-		{Scissor, Scissor, 6},
-
-		{Rock, Paper, 8},
-		{Paper, Rock, 1},
-		{Rock, Scissor, 3},
-		{Scissor, Rock, 7},
-		{Paper, Scissor, 9},
-		{Scissor, Paper, 2},
-	}
-
-	for _, test := range tests {
-		r := NewRound(test.shape1, test.shape2)
-		assert.Equal(t, r.Score(), test.score)
-	}
-}
-
-func TestParseRounds_EmptyString(t *testing.T) {
-	rounds, err := ParseRounds("", true)
+	games, err := ParseGames(content)
 	assert.NoError(t, err)
-	assert.Len(t, rounds, 0)
 
-	rounds, err = ParseRounds("", false)
-	assert.NoError(t, err)
-	assert.Len(t, rounds, 0)
+	sum := PossibleGameSum(games, 12, 13, 14)
+	assert.Equal(t, 8, sum)
 }
 
-func TestParseRounds_Newlines(t *testing.T) {
-	rounds, err := ParseRounds("\n\n\n\n\n", true)
-	assert.NoError(t, err)
-	assert.Len(t, rounds, 0)
-
-	rounds, err = ParseRounds("\n\n\n\n\n", false)
-	assert.NoError(t, err)
-	assert.Len(t, rounds, 0)
-}
-
-func TestParseRounds_ValidRound(t *testing.T) {
-	type parseRoundsTest struct {
-		str            string
-		partOne        bool
-		expectedShape1 Shape
-		expectedShape2 Shape
+func TestGameMinimumCubes(t *testing.T) {
+	type parseGameTest struct {
+		str           string
+		expectedRed   int
+		expectedGreen int
+		expectedBlue  int
 	}
 
-	tests := []parseRoundsTest{
-		{"A Y", true, Rock, Paper},
-
-		{"A X", false, Rock, Scissor},
-		{"A Y", false, Rock, Rock},
-		{"A Z", false, Rock, Paper},
-
-		{"B X", false, Paper, Rock},
-		{"B Y", false, Paper, Paper},
-		{"B Z", false, Paper, Scissor},
-
-		{"C X", false, Scissor, Paper},
-		{"C Y", false, Scissor, Scissor},
-		{"C Z", false, Scissor, Rock},
+	tests := []parseGameTest{
+		{"Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green", 4, 2, 6},
+		{"Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue", 1, 3, 4},
+		{"Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red", 20, 13, 6},
+		{"Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red", 14, 3, 15},
+		{"Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green", 6, 3, 2},
 	}
 
 	for _, test := range tests {
-		rounds, err := ParseRounds(test.str, test.partOne)
+		g, err := ParseGame(test.str)
 		assert.NoError(t, err)
-		assert.Len(t, rounds, 1)
-		assert.Equal(t, rounds[0].shape1, test.expectedShape1)
-		assert.Equal(t, rounds[0].shape2, test.expectedShape2)
+
+		red, green, blue := GameMinimumCubes(g)
+		assert.Equal(t, test.expectedRed, red)
+		assert.Equal(t, test.expectedGreen, green)
+		assert.Equal(t, test.expectedBlue, blue)
 	}
 }
 
-func TestParseRounds_InvalidRound_MultipleShapes(t *testing.T) {
-	rounds, err := ParseRounds("A B C", true)
-	assert.Error(t, err)
-	assert.Len(t, rounds, 0)
+func TestGamePower(t *testing.T) {
+	type parseGameTest struct {
+		str           string
+		expectedPower int
+	}
 
-	rounds, err = ParseRounds("A B C", false)
-	assert.Error(t, err)
-	assert.Len(t, rounds, 0)
+	tests := []parseGameTest{
+		{"Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green", 48},
+		{"Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue", 12},
+		{"Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red", 1560},
+		{"Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red", 630},
+		{"Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green", 36},
+	}
+
+	for _, test := range tests {
+		g, err := ParseGame(test.str)
+		assert.NoError(t, err)
+
+		power := GamePower(g)
+		assert.Equal(t, test.expectedPower, power)
+	}
 }
 
-func TestParseRounds_InvalidRound_InvalidShape(t *testing.T) {
-	rounds, err := ParseRounds("A T", true)
-	assert.Error(t, err)
-	assert.Len(t, rounds, 0)
+func TestGamePowerSum(t *testing.T) {
+	content := `
+	Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green
+	Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue
+	Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red
+	Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
+	Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green`
 
-	rounds, err = ParseRounds("A T", false)
-	assert.Error(t, err)
-	assert.Len(t, rounds, 0)
+	games, err := ParseGames(content)
+	assert.NoError(t, err)
 
-	rounds, err = ParseRounds("T A", true)
-	assert.Error(t, err)
-	assert.Len(t, rounds, 0)
-
-	rounds, err = ParseRounds("T A", false)
-	assert.Error(t, err)
-	assert.Len(t, rounds, 0)
-
-	rounds, err = ParseRounds("A B", false)
-	assert.Error(t, err)
-	assert.Len(t, rounds, 0)
+	powerSum := GamePowerSum(games)
+	assert.Equal(t, 2286, powerSum)
 }
