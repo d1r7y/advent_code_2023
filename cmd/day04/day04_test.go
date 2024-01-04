@@ -1,156 +1,116 @@
 package day04
 
 import (
+	"log"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSectionID(t *testing.T) {
-	id := NewSectionID(5)
-
-	assert.Equal(t, int(id), 5)
-}
-
-func TestSectionRange(t *testing.T) {
-	sr := NewSectionRange(NewSectionID(5), NewSectionID(10))
-	assert.Equal(t, int(sr.startID), 5)
-	assert.Equal(t, int(sr.endID), 10)
-}
-
-func TestCleaningPair(t *testing.T) {
-	sr1 := NewSectionRange(NewSectionID(5), NewSectionID(10))
-	sr2 := NewSectionRange(NewSectionID(15), NewSectionID(23))
-	cp := NewCleaningPair(sr1, sr2)
-
-	assert.Equal(t, int(cp.first.startID), 5)
-	assert.Equal(t, int(cp.first.endID), 10)
-	assert.Equal(t, int(cp.second.startID), 15)
-	assert.Equal(t, int(cp.second.endID), 23)
-}
-
-func TestParseSectionRange_Valid(t *testing.T) {
-	type parseSectionRangeTest struct {
-		str                  string
-		expectedSectionRange SectionRange
+func TestParseCard(t *testing.T) {
+	type parseCardTest struct {
+		line         string
+		expectedCard *Card
 	}
 
-	tests := []parseSectionRangeTest{
-		{"1-20", NewSectionRange(NewSectionID(1), NewSectionID(20))},
-		{"4-4", NewSectionRange(NewSectionID(4), NewSectionID(4))},
+	tests := []parseCardTest{
+		{"Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53", &Card{Number: 1, WinningNumbers: []int{41, 48, 83, 86, 17}, MyNumbers: []int{83, 86, 6, 31, 17, 9, 48, 53}}},
+		{"Card 2: 13 32 20 16 61 | 61 30 68 82 17 32 24 19", &Card{Number: 2, WinningNumbers: []int{13, 32, 20, 16, 61}, MyNumbers: []int{61, 30, 68, 82, 17, 32, 24, 19}}},
+		{"Card 3:  1 21 53 59 44 | 69 82 63 72 16 21 14  1", &Card{Number: 3, WinningNumbers: []int{1, 21, 53, 59, 44}, MyNumbers: []int{69, 82, 63, 72, 16, 21, 14, 1}}},
+		{"Card 4: 41 92 73 84 69 | 59 84 76 51 58  5 54 83", &Card{Number: 4, WinningNumbers: []int{41, 92, 73, 84, 69}, MyNumbers: []int{59, 84, 76, 51, 58, 5, 54, 83}}},
+		{"Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36", &Card{Number: 5, WinningNumbers: []int{87, 83, 26, 28, 32}, MyNumbers: []int{88, 30, 70, 12, 93, 22, 82, 36}}},
+		{"Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11", &Card{Number: 6, WinningNumbers: []int{31, 18, 13, 56, 72}, MyNumbers: []int{74, 77, 10, 23, 35, 67, 36, 11}}},
 	}
 
 	for _, test := range tests {
-		sr, err := ParseSectionRange(test.str)
+		card, err := ParseCard(test.line)
+
 		assert.NoError(t, err)
-		assert.Equal(t, test.expectedSectionRange, sr)
+		assert.Equal(t, test.expectedCard, card)
 	}
 }
 
-func TestParseSectionRange_Invalid(t *testing.T) {
-	type parseSectionRangeTest struct {
-		str string
+func TestWinningMatches(t *testing.T) {
+	type parseCardTest struct {
+		line                   string
+		expectedWinningMatches int
 	}
 
-	tests := []parseSectionRangeTest{
-		{""},
-		{"ax?"},
-		{"1*5"},
-		{"1,2,3"},
-	}
-
-	for _, test := range tests {
-		_, err := ParseSectionRange(test.str)
-		assert.Error(t, err)
-	}
-}
-
-func TestParseCleaningPair_Valid(t *testing.T) {
-	type parseCleaningPairTest struct {
-		str                  string
-		expectedCleaningPair CleaningPair
-	}
-
-	tests := []parseCleaningPairTest{
-		{"1-20,25-30", NewCleaningPair(NewSectionRange(NewSectionID(1), NewSectionID(20)), NewSectionRange(NewSectionID(25), NewSectionID(30)))},
-		{"4-4,8-8", NewCleaningPair(NewSectionRange(NewSectionID(4), NewSectionID(4)), NewSectionRange(NewSectionID(8), NewSectionID(8)))},
+	tests := []parseCardTest{
+		{"Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53", 4},
+		{"Card 2: 13 32 20 16 61 | 61 30 68 82 17 32 24 19", 2},
+		{"Card 3:  1 21 53 59 44 | 69 82 63 72 16 21 14  1", 2},
+		{"Card 4: 41 92 73 84 69 | 59 84 76 51 58  5 54 83", 1},
+		{"Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36", 0},
+		{"Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11", 0},
 	}
 
 	for _, test := range tests {
-		cp, err := ParseCleaningPair(test.str)
+		card, err := ParseCard(test.line)
+
 		assert.NoError(t, err)
-		assert.Equal(t, test.expectedCleaningPair, cp)
+		assert.Equal(t, test.expectedWinningMatches, card.WinningMatches())
 	}
 }
 
-func TestParseCleaningPair_Invalid(t *testing.T) {
-	type parseSectionRangeTest struct {
-		str string
+func TestWorth(t *testing.T) {
+	type parseCardTest struct {
+		line          string
+		expectedWorth int
 	}
 
-	tests := []parseSectionRangeTest{
-		{""},
-		{"ax?,asj"},
-		{"1*5,,"},
-	}
-
-	for _, test := range tests {
-		_, err := ParseCleaningPair(test.str)
-		assert.Error(t, err)
-	}
-}
-
-func TestCleaningPairFullyContained(t *testing.T) {
-	type fullyContainedTest struct {
-		str                    string
-		expectedFullyContained bool
-	}
-
-	tests := []fullyContainedTest{
-		{"1-20,25-30", false},
-		{"4-4,8-8", false},
-
-		{"4-8,8-8", true},
-		{"8-8,4-8", true},
-		{"4-8,8-10", false},
-		{"8-10,4-8", false},
-
-		{"4-10,5-8", true},
+	tests := []parseCardTest{
+		{"Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53", 8},
+		{"Card 2: 13 32 20 16 61 | 61 30 68 82 17 32 24 19", 2},
+		{"Card 3:  1 21 53 59 44 | 69 82 63 72 16 21 14  1", 2},
+		{"Card 4: 41 92 73 84 69 | 59 84 76 51 58  5 54 83", 1},
+		{"Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36", 0},
+		{"Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11", 0},
 	}
 
 	for _, test := range tests {
-		cp, err := ParseCleaningPair(test.str)
+		card, err := ParseCard(test.line)
+
 		assert.NoError(t, err)
-		assert.Equal(t, test.expectedFullyContained, cp.FullyContained())
+		assert.Equal(t, test.expectedWorth, card.Worth())
 	}
 }
 
-func TestCleaningPairIntersect(t *testing.T) {
-	type intersectTest struct {
-		str               string
-		expectedIntersect bool
+func TestTotalCardsWon(t *testing.T) {
+	content := `Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53
+	Card 2: 13 32 20 16 61 | 61 30 68 82 17 32 24 19
+	Card 3:  1 21 53 59 44 | 69 82 63 72 16 21 14  1
+	Card 4: 41 92 73 84 69 | 59 84 76 51 58  5 54 83
+	Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36
+	Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11`
+
+	cards := make([]*Card, 0)
+	for _, line := range strings.Split(content, "\n") {
+		if line != "" {
+			card, err := ParseCard(strings.TrimSpace(line))
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			cards = append(cards, card)
+		}
 	}
 
-	tests := []intersectTest{
-		{"1-20,25-30", false},
+	for i, _ := range cards {
+		winningMatches := cards[i].WinningMatches()
 
-		{"4-4,8-8", false},
-
-		{"4-8,8-8", true},
-		{"8-8,4-8", true},
-
-		{"4-8,8-10", true},
-		{"8-10,4-8", true},
-
-		{"4-10,5-8", true},
-
-		{"4-10,11-16", false},
-		{"11-16,4-10", false},
+		for duplicates := 0; duplicates < cards[i].Count; duplicates++ {
+			for j := i + 1; j <= i+winningMatches; j++ {
+				cards[j].Count++
+			}
+		}
 	}
 
-	for _, test := range tests {
-		cp, err := ParseCleaningPair(test.str)
-		assert.NoError(t, err)
-		assert.Equal(t, test.expectedIntersect, cp.Intersect())
+	totalCardsWon := 0
+	for _, c := range cards {
+		totalCardsWon += c.Count
 	}
+
+	assert.Equal(t, 30, totalCardsWon)
 }

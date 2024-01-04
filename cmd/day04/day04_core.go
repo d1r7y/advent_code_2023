@@ -1,153 +1,131 @@
 package day04
 
 import (
-	"errors"
 	"fmt"
 	"log"
+	"math"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
-type SectionID int
-
-func NewSectionID(i int) SectionID {
-	return SectionID(i)
+type Card struct {
+	Number         int
+	Count          int
+	WinningNumbers []int
+	MyNumbers      []int
 }
 
-type SectionRange struct {
-	startID SectionID
-	endID   SectionID
-}
-
-func NewSectionRange(s, e SectionID) SectionRange {
-	if int(s) > int(e) {
-		panic(fmt.Sprintf("start range greater than end range (%d > %d", int(s), int(e)))
+func ParseCard(line string) (*Card, error) {
+	re := regexp.MustCompile(`Card\s+(\d+):(.*)`)
+	cardNumberAndRemainingMatches := re.FindStringSubmatch(line)
+	if cardNumberAndRemainingMatches == nil {
+		return nil, fmt.Errorf("invalid card: '%s'", line)
 	}
 
-	return SectionRange{startID: s, endID: e}
-}
-
-type CleaningPair struct {
-	first  SectionRange
-	second SectionRange
-}
-
-func NewCleaningPair(f, s SectionRange) CleaningPair {
-	return CleaningPair{first: f, second: s}
-}
-
-func (cp CleaningPair) FullyContained() bool {
-	// See if second is fully contained with first.
-	if cp.first.startID <= cp.second.startID && cp.first.endID >= cp.second.endID {
-		return true
-	}
-
-	// See if first is fully contained with second.
-	if cp.second.startID <= cp.first.startID && cp.second.endID >= cp.first.endID {
-		return true
-	}
-
-	return false
-}
-
-func (cp CleaningPair) Intersect() bool {
-	if cp.first.endID < cp.second.startID {
-		return false
-	}
-
-	if cp.first.startID > cp.second.endID {
-		return false
-	}
-
-	return true
-}
-
-func ParseSectionRange(str string) (SectionRange, error) {
-	if str == "" {
-		return SectionRange{}, errors.New("empty string")
-	}
-
-	var s int
-	var e int
-
-	count, err := fmt.Sscanf(str, "%d-%d", &s, &e)
+	cardNumber, err := strconv.Atoi(string(cardNumberAndRemainingMatches[1]))
 	if err != nil {
-		return SectionRange{}, err
+		return nil, err
 	}
 
-	if count != 2 {
-		return SectionRange{}, errors.New("invalid string")
-	}
+	// Split the remaining matches around |.  Left side is list of winning numbers, right side is list of numbers you have.
+	numbers := strings.Split(string(cardNumberAndRemainingMatches[2]), "|")
 
-	return NewSectionRange(NewSectionID(s), NewSectionID(e)), nil
-}
+	winningNumbers := make([]int, 0)
+	myNumbers := make([]int, 0)
 
-func ParseCleaningPair(str string) (CleaningPair, error) {
-	if str == "" {
-		return CleaningPair{}, errors.New("empty string")
-	}
-
-	cleaningElves := strings.Split(str, ",")
-	if len(cleaningElves) != 2 {
-		return CleaningPair{}, errors.New("invalid string")
-	}
-
-	f, err := ParseSectionRange(cleaningElves[0])
-	if err != nil {
-		return CleaningPair{}, err
-	}
-
-	s, err := ParseSectionRange(cleaningElves[1])
-	if err != nil {
-		return CleaningPair{}, err
-	}
-
-	return NewCleaningPair(f, s), nil
-}
-
-func ParseCleaningAssignments(text string) ([]CleaningPair, error) {
-	assignments := make([]CleaningPair, 0)
-
-	if text == "" {
-		return assignments, nil
-	}
-
-	for _, line := range strings.Split(text, "\n") {
-		cp, err := ParseCleaningPair(line)
+	for _, n := range strings.Fields(numbers[0]) {
+		number, err := strconv.Atoi(n)
 		if err != nil {
-			return []CleaningPair{}, err
+			return nil, err
 		}
-
-		assignments = append(assignments, cp)
+		winningNumbers = append(winningNumbers, number)
 	}
 
-	return assignments, nil
+	for _, n := range strings.Fields(numbers[1]) {
+		number, err := strconv.Atoi(n)
+		if err != nil {
+			return nil, err
+		}
+		myNumbers = append(myNumbers, number)
+	}
+
+	card := &Card{
+		Number:         cardNumber,
+		Count:          1,
+		WinningNumbers: winningNumbers,
+		MyNumbers:      myNumbers,
+	}
+
+	return card, nil
+}
+
+func (c *Card) WinningMatches() int {
+	winningMatches := 0
+
+	contains := func(list []int, value int) bool {
+		for _, lv := range list {
+			if lv == value {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, wn := range c.WinningNumbers {
+		if contains(c.MyNumbers, wn) {
+			winningMatches++
+		}
+	}
+
+	return winningMatches
+}
+
+func (c *Card) Worth() int {
+	winningMatches := c.WinningMatches()
+
+	return int(math.Pow(2, float64(winningMatches-1)))
 }
 
 func day04(fileContents string) error {
-	// Part 1: In how many cleaning assignments does one SectionRange fully contain the other?
-	assignments, err := ParseCleaningAssignments(string(fileContents))
-	if err != nil {
-		return err
-	}
+	cards := make([]*Card, 0)
+	for _, line := range strings.Split(fileContents, "\n") {
+		if line != "" {
+			card, err := ParseCard(line)
+			if err != nil {
+				log.Fatal(err)
+			}
 
-	totalFullyContained := 0
-	for _, assignment := range assignments {
-		if assignment.FullyContained() {
-			totalFullyContained++
+			cards = append(cards, card)
 		}
 	}
 
-	log.Printf("%d assignments fully contained\n", totalFullyContained)
+	// Part 1: How many points are they worth in total?
+	totalPoints := 0
 
-	// Part 2: In how many cleaning assignments is there any overlap between the SectionRanges?
+	for _, card := range cards {
+		totalPoints += card.Worth()
+	}
 
-	totalIntersect := 0
-	for _, assignment := range assignments {
-		if assignment.Intersect() {
-			totalIntersect++
+	log.Printf("Cards worth a total of %d points\n", totalPoints)
+
+	// Part 2: Including the original set of scratchcards, how many total scratchcards do you end up with?
+	for i, _ := range cards {
+		winningMatches := cards[i].WinningMatches()
+
+		for duplicates := 0; duplicates < cards[i].Count; duplicates++ {
+			for j := i + 1; j <= i+winningMatches; j++ {
+				cards[j].Count++
+			}
 		}
 	}
 
-	log.Printf("%d assignments intersect\n", totalIntersect)
-	return err
+	totalCardsWon := 0
+	for _, c := range cards {
+		totalCardsWon += c.Count
+	}
+
+	log.Printf("Total cards won %d\n", totalCardsWon)
+
+	return nil
 }
