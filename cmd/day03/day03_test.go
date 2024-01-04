@@ -65,14 +65,14 @@ func TestParseSchematicLine(t *testing.T) {
 
 	tests := []parseSchematicLineTest{
 		{"467..114..", false, []Part{}, []Number{{Number: 467, Start: Location{0, 0}, End: Location{2, 0}}, {Number: 114, Start: Location{5, 0}, End: Location{7, 0}}}},
-		{"...*......", false, []Part{{Name: '*', Location: Location{3, 0}}}, []Number{}},
+		{"...*......", false, []Part{{Name: '*', AdjacentNumberIndexes: NewAdjacentNumberIndexes(), Location: Location{3, 0}}}, []Number{}},
 		{"..35..633.", false, []Part{}, []Number{{Number: 35, Start: Location{2, 0}, End: Location{3, 0}}, {Number: 633, Start: Location{6, 0}, End: Location{8, 0}}}},
-		{"......#...", false, []Part{{Name: '#', Location: Location{6, 0}}}, []Number{}},
-		{"617*......", false, []Part{{Name: '*', Location: Location{3, 0}}}, []Number{{Number: 617, Start: Location{0, 0}, End: Location{2, 0}}}},
-		{".....+.58.", false, []Part{{Name: '+', Location: Location{5, 0}}}, []Number{{Number: 58, Start: Location{7, 0}, End: Location{8, 0}}}},
+		{"......#...", false, []Part{{Name: '#', AdjacentNumberIndexes: NewAdjacentNumberIndexes(), Location: Location{6, 0}}}, []Number{}},
+		{"617*......", false, []Part{{Name: '*', AdjacentNumberIndexes: NewAdjacentNumberIndexes(), Location: Location{3, 0}}}, []Number{{Number: 617, Start: Location{0, 0}, End: Location{2, 0}}}},
+		{".....+.58.", false, []Part{{Name: '+', AdjacentNumberIndexes: NewAdjacentNumberIndexes(), Location: Location{5, 0}}}, []Number{{Number: 58, Start: Location{7, 0}, End: Location{8, 0}}}},
 		{"..592.....", false, []Part{}, []Number{{Number: 592, Start: Location{2, 0}, End: Location{4, 0}}}},
 		{"......755.", false, []Part{}, []Number{{Number: 755, Start: Location{6, 0}, End: Location{8, 0}}}},
-		{"...$.*....", false, []Part{{Name: '$', Location: Location{3, 0}}, {Name: '*', Location: Location{5, 0}}}, []Number{}},
+		{"...$.*....", false, []Part{{Name: '$', AdjacentNumberIndexes: NewAdjacentNumberIndexes(), Location: Location{3, 0}}, {Name: '*', AdjacentNumberIndexes: NewAdjacentNumberIndexes(), Location: Location{5, 0}}}, []Number{}},
 		{".664.598..", false, []Part{}, []Number{{Number: 664, Start: Location{1, 0}, End: Location{3, 0}}, {Number: 598, Start: Location{5, 0}, End: Location{7, 0}}}},
 	}
 
