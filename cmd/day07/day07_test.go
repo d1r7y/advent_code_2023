@@ -1,100 +1,177 @@
 package day07
 
 import (
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewFilesystemTree(t *testing.T) {
-	tree := NewFilesystemTree()
-
-	assert.Equal(t, tree.Root.GetName(), "/")
-}
-
-func TestNewFile(t *testing.T) {
-	file := NewFile(nil, "child1")
-	assert.Equal(t, "child1", file.Name)
-	assert.Equal(t, "child1", file.GetName())
-}
-
-func TestNewDirectory(t *testing.T) {
-	dir := NewDirectory(nil, "child1")
-	assert.Equal(t, "child1", dir.Name)
-	assert.Equal(t, "child1", dir.GetName())
-}
-
-func TestAddFileChild(t *testing.T) {
-	parent := NewDirectory(nil, "parent")
-	file := NewFile(nil, "child1")
-
-	err := parent.AddChildren([]FilesystemNode{file})
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(parent.Children))
-
-	children, err := parent.GetChildren()
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(children))
-	assert.Equal(t, file.GetName(), children[0].GetName())
-}
-
-func TestAddDirChild(t *testing.T) {
-	parent := NewDirectory(nil, "parent")
-	dir := NewDirectory(nil, "child1")
-
-	err := parent.AddChildren([]FilesystemNode{dir})
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(parent.Children))
-
-	children, err := parent.GetChildren()
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(children))
-	assert.Equal(t, dir.GetName(), children[0].GetName())
-}
-
-func TestAddChildError(t *testing.T) {
-	parent := NewFile(nil, "parent")
-
-	file := NewFile(nil, "child1")
-
-	err := parent.AddChildren([]FilesystemNode{file})
-	assert.Error(t, err)
-	_, err = parent.GetChildren()
-	assert.Error(t, err)
-
-	dir := NewDirectory(nil, "child1")
-
-	err = parent.AddChildren([]FilesystemNode{dir})
-	assert.Error(t, err)
-	_, err = parent.GetChildren()
-	assert.Error(t, err)
-}
-
-func TestParseLsOutputLine(t *testing.T) {
+func TestCompareHands(t *testing.T) {
 	type testCase struct {
-		str          string
-		expectedErr  bool
-		expectedType NodeType
-		expectedName string
-		expectedSize int64
+		hand1              Hand
+		hand2              Hand
+		expectedComparison int
 	}
 
 	tests := []testCase{
-		{"dir lqwntmdg", false, DirectoryType, "lqwntmdg", 0},
-		{"264381 tmwzlzn", false, FileType, "tmwzlzn", 264381},
-		{"264381 12345", false, FileType, "12345", 264381},
-		{"xyz abc", true, FileType, "", 0},
+		{ParseHand("AAAAA", false), ParseHand("AAAAA", false), 0},
+		{ParseHand("AAAAA", false), ParseHand("KKKKK", false), 1},
+		{ParseHand("22222", false), ParseHand("KKKKK", false), -1},
+
+		{ParseHand("AAAA2", false), ParseHand("AAAA3", false), -1},
+		{ParseHand("AAAA3", false), ParseHand("AAAA3", false), 0},
+		{ParseHand("AAAA3", false), ParseHand("AAAA2", false), 1},
+
+		{ParseHand("AAKKK", false), ParseHand("KKAAA", false), 1},
+		{ParseHand("KKAAA", false), ParseHand("AAAKK", false), -1},
+		{ParseHand("AAAKK", false), ParseHand("AAAKK", false), 0},
+
+		{ParseHand("33332", false), ParseHand("2AAAA", false), 1},
+
+		{ParseHand("77888", false), ParseHand("77788", false), 1},
+
+		{ParseHand("3579J", false), ParseHand("J9753", false), -1},
 	}
 
 	for _, test := range tests {
-		node, err := ParseLsOutputLine(test.str)
-		if test.expectedErr {
-			assert.Error(t, err)
+		assert.Equal(t, test.expectedComparison, CompareHands(test.hand1, test.hand2))
+	}
+}
+
+func TestCompareHandsJoker(t *testing.T) {
+	type testCase struct {
+		hand1              Hand
+		hand2              Hand
+		expectedComparison int
+	}
+
+	tests := []testCase{
+		{ParseHand("AAAAA", true), ParseHand("AAAAA", true), 0},
+		{ParseHand("AAAAA", true), ParseHand("KKKKK", true), 1},
+		{ParseHand("22222", true), ParseHand("KKKKK", true), -1},
+
+		{ParseHand("AAAA2", true), ParseHand("AAAA3", true), -1},
+		{ParseHand("AAAA3", true), ParseHand("AAAA3", true), 0},
+		{ParseHand("AAAA3", true), ParseHand("AAAA2", true), 1},
+
+		{ParseHand("AAKKK", true), ParseHand("KKAAA", true), 1},
+		{ParseHand("KKAAA", true), ParseHand("AAAKK", true), -1},
+		{ParseHand("AAAKK", true), ParseHand("AAAKK", true), 0},
+
+		{ParseHand("33332", true), ParseHand("2AAAA", true), 1},
+
+		{ParseHand("77888", true), ParseHand("77788", true), 1},
+
+		{ParseHand("3579J", true), ParseHand("J9753", true), 1},
+	}
+
+	for _, test := range tests {
+		assert.Equal(t, test.expectedComparison, CompareHands(test.hand1, test.hand2))
+	}
+}
+
+func TestParseHandAndBid(t *testing.T) {
+	type testCase struct {
+		line         string
+		jokers       bool
+		expectedHand Hand
+		expectedBid  Bid
+	}
+
+	tests := []testCase{
+		{"32T3K 765", false, Hand{Cards: Cards{Three, Two, Ten, Three, King}, Strength: OnePair}, 765},
+		{"T55J5 684", false, Hand{Cards: Cards{Ten, Five, Five, Jack, Five}, Strength: ThreeOfAKind}, 684},
+		{"KK677 28", false, Hand{Cards: Cards{King, King, Six, Seven, Seven}, Strength: TwoPair}, 28},
+		{"QQQJA 483", false, Hand{Cards: Cards{Queen, Queen, Queen, Jack, Ace}, Strength: ThreeOfAKind}, 483},
+
+		{"32T3K 765", true, Hand{Cards: Cards{Three, Two, Ten, Three, King}, Strength: OnePair}, 765},
+		{"T55J5 684", true, Hand{Cards: Cards{Ten, Five, Five, Joker, Five}, Strength: FourOfAKind}, 684},
+		{"KK677 28", true, Hand{Cards: Cards{King, King, Six, Seven, Seven}, Strength: TwoPair}, 28},
+		{"QQQJA 483", true, Hand{Cards: Cards{Queen, Queen, Queen, Joker, Ace}, Strength: FourOfAKind}, 483},
+	}
+
+	for _, test := range tests {
+		hand, bid := ParseHandAndBid(test.line, test.jokers)
+		assert.Equal(t, test.expectedHand, hand)
+		assert.Equal(t, test.expectedBid, bid)
+	}
+}
+
+func TestCalculateCardsStrength(t *testing.T) {
+	type testCase struct {
+		line             string
+		jokers           bool
+		expectedStrength Strength
+	}
+
+	tests := []testCase{
+		{"32T3K", false, OnePair},
+		{"T55J5", false, ThreeOfAKind},
+		{"KK677", false, TwoPair},
+		{"QQQJA", false, ThreeOfAKind},
+
+		{"32T3K", true, OnePair},
+		{"T55J5", true, FourOfAKind},
+		{"KK677", true, TwoPair},
+		{"QQQJA", true, FourOfAKind},
+
+		{"J2345", true, OnePair},
+		{"JJ234", true, ThreeOfAKind},
+		{"J2234", true, ThreeOfAKind},
+		{"JJJ24", true, FourOfAKind},
+		{"JJ224", true, FourOfAKind},
+		{"JJ222", true, FiveOfAKind},
+		{"JJJJ2", true, FiveOfAKind},
+		{"JJJ22", true, FiveOfAKind},
+		{"JJ222", true, FiveOfAKind},
+		{"J2222", true, FiveOfAKind},
+		{"J2277", true, FullHouse},
+	}
+
+	for _, test := range tests {
+		cards := ParseCards(test.line, test.jokers)
+		if test.jokers {
+			assert.Equal(t, test.expectedStrength, CalculateCardsStrengthJokers(cards), test.line)
 		} else {
-			assert.NoError(t, err)
-			assert.Equal(t, test.expectedType, node.GetType())
-			assert.Equal(t, test.expectedName, node.GetName())
-			assert.Equal(t, test.expectedSize, node.GetSize())
+			assert.Equal(t, test.expectedStrength, CalculateCardsStrength(cards), test.line)
 		}
 	}
+}
+
+func TestHandDescribe(t *testing.T) {
+	hand := ParseHand("J6JKJ", true)
+	assert.Equal(t, "J6JKJ four of a kind", hand.Describe())
+}
+
+func TestTotalWinningsJoker(t *testing.T) {
+	content := `
+	32T3K 765
+	T55J5 684
+	KK677 28
+	KTJJT 220
+	QQQJA 483`
+	handAndBidList := make([]HandAndBid, 0)
+
+	for _, line := range strings.Split(content, "\n") {
+		hb := HandAndBid{}
+
+		if line != "" {
+			hb.Hand, hb.Bid = ParseHandAndBid(line, true)
+			handAndBidList = append(handAndBidList, hb)
+		}
+	}
+
+	sort.Slice(handAndBidList, func(i, j int) bool {
+		return CompareHands(handAndBidList[i].Hand, handAndBidList[j].Hand) < 0
+	})
+
+	totalWinnings := 0
+
+	for rank, hb := range handAndBidList {
+		totalWinnings += int(hb.Bid) * (rank + 1)
+	}
+
+	assert.Equal(t, 5905, totalWinnings)
 }

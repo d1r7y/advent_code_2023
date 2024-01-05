@@ -1,366 +1,360 @@
 package day07
 
 import (
-	"errors"
-	"fmt"
-	"math"
-	"path/filepath"
+	"log"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 )
 
-type NodeType int
+type Bid int
+
+type Card int
 
 const (
-	DirectoryType NodeType = iota
-	FileType
+	Joker Card = iota
+	Two
+	Three
+	Four
+	Five
+	Six
+	Seven
+	Eight
+	Nine
+	Ten
+	Jack
+	Queen
+	King
+	Ace
 )
 
-type WalkFunction func(n FilesystemNode) error
+type Cards [5]Card
 
-type FilesystemNode interface {
-	GetType() NodeType
-
-	GetName() string
-	SetName(name string)
-
-	Find(path string) (FilesystemNode, error)
-
-	GetSize() int64
-	SetSize(size int64) error
-
-	GetChildren() ([]FilesystemNode, error)
-	AddChildren(children []FilesystemNode) error
-
-	GetParent() FilesystemNode
-	SetParent(parent FilesystemNode) error
-
-	Walk(depth bool, wf WalkFunction) error
-}
-
-type FilesystemTree struct {
-	Root FilesystemNode
-}
-
-func NewFilesystemTree() *FilesystemTree {
-	return &FilesystemTree{Root: NewRootDirectory()}
-}
-
-func (t *FilesystemTree) Find(path string) (FilesystemNode, error) {
-	if !filepath.IsAbs(path) {
-		return nil, fmt.Errorf("non-absolute path '%s'", path)
-	}
-
-	if path == "/" {
-		return t.Root, nil
-	}
-
-	// Remove leading slash
-	rel := path[1:]
-
-	return t.Root.Find(rel)
-}
-
-type File struct {
-	Name   string
-	Size   int64
-	Parent FilesystemNode
-}
-
-func NewFile(parent FilesystemNode, name string) *File {
-	return &File{Parent: parent, Name: name}
-}
-
-func (f *File) GetType() NodeType {
-	return FileType
-}
-
-func (f *File) GetName() string {
-	return f.Name
-}
-
-func (f *File) SetName(name string) {
-	f.Name = name
-}
-
-func (f *File) Find(path string) (FilesystemNode, error) {
-	return nil, errors.New("files don't have children")
-}
-
-func (f *File) GetSize() int64 {
-	return f.Size
-}
-
-func (f *File) SetSize(size int64) error {
-	f.Size = size
-	return nil
-}
-
-func (f *File) GetChildren() ([]FilesystemNode, error) {
-	return []FilesystemNode{}, errors.New("files don't have children")
-}
-
-func (f *File) AddChildren(children []FilesystemNode) error {
-	return errors.New("files don't have children")
-}
-
-func (f *File) GetParent() FilesystemNode {
-	return f.Parent
-}
-
-func (f *File) SetParent(parent FilesystemNode) error {
-	if parent.GetType() != DirectoryType {
-		return errors.New("parent not directory")
-	}
-	if f == parent {
-		return errors.New("parent/child loop")
-	}
-
-	f.Parent = parent
-
-	return nil
-}
-
-func (f *File) Walk(depth bool, wf WalkFunction) error {
-	return wf(f)
-}
-
-type Directory struct {
-	Name     string
-	Children []FilesystemNode
-	Parent   FilesystemNode
-}
-
-func NewDirectory(parent FilesystemNode, name string) *Directory {
-	return &Directory{Parent: parent, Name: name}
-}
-
-func NewRootDirectory() *Directory {
-	root := &Directory{Name: "/"}
-	root.Parent = root
-
-	return root
-}
-
-func (d *Directory) GetType() NodeType {
-	return DirectoryType
-}
-
-func (d *Directory) GetName() string {
-	return d.Name
-}
-
-func (d *Directory) SetName(name string) {
-	d.Name = name
-}
-
-func (d *Directory) Find(path string) (FilesystemNode, error) {
-	elements := strings.Split(path, "/")
-
-	if path == "" {
-		return d, nil
-	}
-
-	if path == ".." {
-		return d.Parent, nil
-	}
-
-	for _, child := range d.Children {
-		if child.GetName() == elements[0] {
-			return child.Find(filepath.Join(elements[1:]...))
+func (c Cards) Describe() string {
+	description := ""
+	for _, v := range c {
+		switch v {
+		case Joker:
+			description += "J"
+		case Jack:
+			description += "J"
+		case Two:
+			description += "2"
+		case Three:
+			description += "3"
+		case Four:
+			description += "4"
+		case Five:
+			description += "5"
+		case Six:
+			description += "6"
+		case Seven:
+			description += "7"
+		case Eight:
+			description += "8"
+		case Nine:
+			description += "9"
+		case Ten:
+			description += "T"
+		case Queen:
+			description += "Q"
+		case King:
+			description += "K"
+		case Ace:
+			description += "A"
 		}
 	}
 
-	return nil, fmt.Errorf("no such child '%s'", elements[0])
+	return description
 }
 
-func (d *Directory) GetSize() int64 {
-	var totalSize int64
+type Strength int
 
-	for _, child := range d.Children {
-		totalSize += child.GetSize()
+const (
+	HighCard Strength = iota
+	OnePair
+	TwoPair
+	ThreeOfAKind
+	FullHouse
+	FourOfAKind
+	FiveOfAKind
+)
+
+type Hand struct {
+	Strength Strength
+	Cards    Cards
+}
+
+func (h Hand) Describe() string {
+	description := h.Cards.Describe()
+
+	switch h.Strength {
+	case HighCard:
+		description += " high card"
+	case OnePair:
+		description += " one pair"
+	case TwoPair:
+		description += " two pair"
+	case ThreeOfAKind:
+		description += " three of a kind"
+	case FullHouse:
+		description += " full house"
+	case FourOfAKind:
+		description += " four of a kind"
+	case FiveOfAKind:
+		description += " five of a kind"
 	}
 
-	return totalSize
+	return description
 }
 
-func (d *Directory) SetSize(size int64) error {
-	return errors.New("can't change directory size")
+type HandAndBid struct {
+	Hand Hand
+	Bid  Bid
 }
 
-func (d *Directory) GetChildren() ([]FilesystemNode, error) {
-	return d.Children, nil
+func getCardMap() map[string]Card {
+	return map[string]Card{"2": Two, "3": Three, "4": Four, "5": Five, "6": Six, "7": Seven, "8": Eight, "9": Nine, "T": Ten, "J": Jack, "Q": Queen, "K": King, "A": Ace}
 }
 
-func (d *Directory) AddChildren(children []FilesystemNode) error {
-	d.Children = append(d.Children, children...)
-	return nil
+func getCardMapJokers() map[string]Card {
+	return map[string]Card{"2": Two, "3": Three, "4": Four, "5": Five, "6": Six, "7": Seven, "8": Eight, "9": Nine, "T": Ten, "J": Joker, "Q": Queen, "K": King, "A": Ace}
 }
 
-func (d *Directory) GetParent() FilesystemNode {
-	return d.Parent
-}
+func CalculateCardsStrength(cards Cards) Strength {
+	cardCount := [int(Ace) + 1]int{}
 
-func (d *Directory) SetParent(parent FilesystemNode) error {
-	if parent.GetType() != DirectoryType {
-		return errors.New("parent not directory")
-	}
-	if d == parent {
-		return errors.New("parent/child loop")
+	for _, card := range cards {
+		cardCount[card]++
 	}
 
-	d.Parent = parent
+	threeOfAKindSeen := false
 
-	return nil
-}
+	distinctCardsSeen := 0
+	for _, count := range cardCount {
+		if count != 0 {
+			distinctCardsSeen++
 
-func (d *Directory) Walk(depth bool, wf WalkFunction) error {
-	if !depth {
-		if err := wf(d); err != nil {
-			return err
+			if count == 3 {
+				threeOfAKindSeen = true
+			}
 		}
 	}
 
-	for _, child := range d.Children {
-		if err := child.Walk(depth, wf); err != nil {
-			return err
+	strength := HighCard
+
+	switch distinctCardsSeen {
+	case 5:
+		strength = HighCard
+	case 4:
+		strength = OnePair
+	case 3:
+		if threeOfAKindSeen {
+			strength = ThreeOfAKind
+		} else {
+			strength = TwoPair
+		}
+	case 2:
+		if threeOfAKindSeen {
+			strength = FullHouse
+		} else {
+			strength = FourOfAKind
+		}
+	case 1:
+		strength = FiveOfAKind
+	}
+
+	return strength
+}
+
+func CalculateCardsStrengthJokers(cards Cards) Strength {
+	cardCount := [int(Ace) + 1]int{}
+
+	jokerCount := 0
+
+	for _, card := range cards {
+		if card == Joker {
+			jokerCount++
+			continue
+		}
+
+		cardCount[card]++
+	}
+
+	// If we didn't find any jokers, then we can use the non joker calculations.
+	if jokerCount == 0 {
+		return CalculateCardsStrength(cards)
+	}
+
+	// We have at least one joker.
+
+	threeOfAKindSeen := false
+
+	distinctCardsSeen := 0
+	for _, count := range cardCount {
+		if count != 0 {
+			distinctCardsSeen++
+
+			if count == 3 {
+				threeOfAKindSeen = true
+			}
 		}
 	}
 
-	if depth {
-		if err := wf(d); err != nil {
-			return err
+	strength := HighCard
+
+	switch distinctCardsSeen {
+	case 4:
+		// 1 joker and 4 non matching cards.
+		strength = OnePair
+	case 3:
+		// 2 joker and 3 non matching cards, or 1 joker and a pair and another card.
+		strength = ThreeOfAKind
+	case 2:
+		if jokerCount == 1 {
+			// 1 joker and 2 pairs, or 1 joker and three of a kind and another card.
+			if threeOfAKindSeen {
+				strength = FourOfAKind
+			} else {
+				strength = FullHouse
+			}
+		} else {
+			// 3 jokers and a non pair, or 2 jokers and a pair and another card
+			strength = FourOfAKind
+		}
+	case 1:
+		// 4 jokers and one card, or 3 jokers and a pair, or 2 jokers and three of a kind, or 1 joker and four of a kind.
+		strength = FiveOfAKind
+	case 0:
+		// 5 jokers.
+		strength = FiveOfAKind
+	}
+
+	return strength
+}
+
+func CompareHands(h1 Hand, h2 Hand) int {
+	if h1.Strength != h2.Strength {
+		if h1.Strength < h2.Strength {
+			return -1
+		} else {
+			return 1
 		}
 	}
 
-	return nil
-}
+	// They have the same strength...Start comparing cards, left to right, and highest card wins.
 
-func ParseLsOutputLine(str string) (FilesystemNode, error) {
-	// See if it's a directory first.
-	var name string
-
-	count, err := fmt.Sscanf(str, "dir %s", &name)
-	if err == nil && count == 1 {
-		return NewDirectory(nil, name), nil
+	for i := 0; i < len(h1.Cards); i++ {
+		if h1.Cards[i] != h2.Cards[i] {
+			if h1.Cards[i] < h2.Cards[i] {
+				return -1
+			} else {
+				return 1
+			}
+		}
 	}
 
-	// Now see if it's a file.
-	var size int64
-	count, err = fmt.Sscanf(str, "%d %s", &size, &name)
-	if err == nil && count == 2 {
-		file := NewFile(nil, name)
-		file.SetSize(size)
-		return file, nil
-	}
-
-	return nil, errors.New("invalid line")
+	// Identical hands.
+	return 0
 }
 
-func IsCommand(str string) bool {
-	return strings.HasPrefix(str, "$ ")
+func ParseCards(str string, jokers bool) Cards {
+	cardsRE := regexp.MustCompile(`[2-9TJQKA]`)
+	cardsMatches := cardsRE.FindAllString(str, -1)
+
+	cards := Cards{}
+
+	if len(cardsMatches) != 5 {
+		log.Panicf("unexpected hand: '%s'\n", str)
+	}
+
+	for i, c := range cardsMatches {
+		if jokers {
+			cards[i] = getCardMapJokers()[c]
+		} else {
+			cards[i] = getCardMap()[c]
+		}
+	}
+
+	return cards
+}
+
+func ParseHand(str string, jokers bool) Hand {
+	hand := Hand{}
+
+	hand.Cards = ParseCards(str, jokers)
+	if jokers {
+		hand.Strength = CalculateCardsStrengthJokers(hand.Cards)
+	} else {
+		hand.Strength = CalculateCardsStrength(hand.Cards)
+	}
+
+	return hand
+}
+
+func ParseBid(str string) Bid {
+	bid, err := strconv.Atoi(str)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return Bid(bid)
+}
+
+func ParseHandAndBid(line string, jokers bool) (Hand, Bid) {
+	cardsAndBid := strings.Fields(strings.TrimSpace(line))
+
+	hand := ParseHand(cardsAndBid[0], jokers)
+	bid := ParseBid(cardsAndBid[1])
+
+	return hand, bid
 }
 
 func day07(fileContents string) error {
-	fs := NewFilesystemTree()
+	// Part 1: Find the rank of every hand in your set. What are the total winnings?
+	handAndBidList1 := make([]HandAndBid, 0)
 
-	var cwd = fs.Root
-
-	lsOutputMode := false
-
-NextLine:
 	for _, line := range strings.Split(string(fileContents), "\n") {
-		if lsOutputMode {
-			if IsCommand(line) {
-				lsOutputMode = false
-			} else {
-				node, err := ParseLsOutputLine(line)
-				if err != nil {
-					return err
-				}
-				node.SetParent(cwd)
-				cwd.AddChildren([]FilesystemNode{node})
-				continue NextLine
-			}
-		}
+		hb := HandAndBid{}
 
-		if IsCommand(line) {
-			if strings.HasPrefix(line, "$ ls") {
-				lsOutputMode = true
-				continue NextLine
-			} else if strings.HasPrefix(line, "$ cd") {
-				var name string
-				count, err := fmt.Sscanf(line, "$ cd %s", &name)
-				if err != nil {
-					return err
-				}
-				if count != 1 {
-					return errors.New("invalid line")
-				}
-
-				if filepath.IsAbs(name) {
-					node, err := fs.Find(name)
-					if err != nil {
-						return err
-					}
-					cwd = node
-				} else {
-					node, err := cwd.Find(name)
-					if err != nil {
-						return err
-					}
-					cwd = node
-				}
-			} else {
-				return fmt.Errorf("unknown command '%s'", line)
-			}
-
-		}
+		hb.Hand, hb.Bid = ParseHandAndBid(line, false)
+		handAndBidList1 = append(handAndBidList1, hb)
 	}
 
-	// Part 1: Find all of the directories with a total size of at most 100000.  What is the sum of the total sizes
-	// of those directories?
-
-	var totalSize int64
-
-	fs.Root.Walk(true, func(n FilesystemNode) error {
-		if n.GetType() == DirectoryType && n.GetSize() <= 100000 {
-			totalSize += n.GetSize()
-		}
-
-		return nil
+	sort.Slice(handAndBidList1, func(i, j int) bool {
+		return CompareHands(handAndBidList1[i].Hand, handAndBidList1[j].Hand) < 0
 	})
 
-	fmt.Printf("Sum of the total sizes of directories whose size is at most 100000: %d\n", totalSize)
+	totalWinnings1 := 0
 
-	const DiskSize = int64(70000000)
-	const UpdateSize = int64(30000000)
-
-	// Part 2: Disk is DiskSize.  Update needs UpdateSize bytes free.  Find the smallest directory we can delete that will
-	// allow us to do the update.
-
-	availableSpace := DiskSize - fs.Root.GetSize()
-	if availableSpace < UpdateSize {
-		amountToDelete := UpdateSize - availableSpace
-		fmt.Printf("Amount to delete: %d\n", amountToDelete)
-
-		minimumSize := int64(math.MaxInt64)
-
-		fs.Root.Walk(true, func(n FilesystemNode) error {
-			if n.GetType() == DirectoryType {
-				dirSize := n.GetSize()
-
-				// Is this directory bigger than what we need to delete, but smaller than the smallest we've seen up to now?
-				// Then remember its size.
-				if dirSize >= amountToDelete && dirSize < minimumSize {
-					minimumSize = dirSize
-				}
-			}
-
-			return nil
-		})
-
-		fmt.Printf("Smallest directory size which can satisfy our update: %d\n", minimumSize)
+	for rank, hb := range handAndBidList1 {
+		totalWinnings1 += int(hb.Bid) * (rank + 1)
 	}
+
+	log.Printf("Total winnings: %d\n", totalWinnings1)
+
+	// Part 2: Using the new joker rule, find the rank of every hand in your set. What are the new total winnings?
+	handAndBidList2 := make([]HandAndBid, 0)
+
+	for _, line := range strings.Split(string(fileContents), "\n") {
+		hb := HandAndBid{}
+
+		hb.Hand, hb.Bid = ParseHandAndBid(line, true)
+		handAndBidList2 = append(handAndBidList2, hb)
+	}
+
+	sort.Slice(handAndBidList2, func(i, j int) bool {
+		return CompareHands(handAndBidList2[i].Hand, handAndBidList2[j].Hand) < 0
+	})
+
+	totalWinnings2 := 0
+
+	for rank, hb := range handAndBidList2 {
+		totalWinnings2 += int(hb.Bid) * (rank + 1)
+	}
+
+	log.Printf("Total winnings with jokers: %d\n", totalWinnings2)
 
 	return nil
 }
