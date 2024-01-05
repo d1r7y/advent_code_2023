@@ -1,225 +1,231 @@
 package day08
 
 import (
-	"errors"
+	"fmt"
 	"log"
+	"regexp"
 	"strings"
 )
 
-type TreeRow []byte
-
-type Forest struct {
-	Trees []TreeRow
+type Node struct {
+	Name  string
+	Left  *Node
+	Right *Node
 }
 
-func NewForest() *Forest {
-	return &Forest{Trees: make([]TreeRow, 0)}
+func (n *Node) Describe() string {
+	return fmt.Sprintf("%s = (%s, %s)", n.Name, n.Left.Name, n.Right.Name)
 }
 
-func (f *Forest) scenicScoreForTree(x, y int) int {
-	row := f.Trees[y]
-
-	// Need to check four cardinal directions.
-	height := row[x]
-
-	// Up
-	upViewDistance := 0
-Up:
-	for up := y - 1; up >= 0; up-- {
-		upRow := f.Trees[up]
-		upViewDistance++
-		if upRow[x] >= height {
-			break Up
-		}
-	}
-
-	// Down
-	downViewDistance := 0
-Down:
-	for down := y + 1; down < len(f.Trees); down++ {
-		downRow := f.Trees[down]
-		downViewDistance++
-		if downRow[x] >= height {
-			break Down
-		}
-	}
-
-	// Left
-	leftViewDistance := 0
-Left:
-	for left := x - 1; left >= 0; left-- {
-		leftViewDistance++
-		if row[left] >= height {
-			break Left
-		}
-	}
-
-	// Right
-	rightViewDistance := 0
-Right:
-	for right := x + 1; right < len(row); right++ {
-		rightViewDistance++
-		if row[right] >= height {
-			break Right
-		}
-	}
-
-	return upViewDistance * downViewDistance * leftViewDistance * rightViewDistance
+type NodeDescription struct {
+	Name      string
+	LeftName  string
+	RightName string
 }
 
-func (f *Forest) BestScenicScore() int {
-	bestScenicScore := 0
+type Network struct {
+	NameLookup map[string]*Node
+}
 
-	for i, row := range f.Trees {
-		for j := range row {
-			scenicScore := f.scenicScoreForTree(j, i)
-			if scenicScore > bestScenicScore {
-				bestScenicScore = scenicScore
+func NewNetwork() *Network {
+	return &Network{NameLookup: make(map[string]*Node)}
+}
+
+func (n *Network) ForEach(yield func(node *Node) bool) {
+	for _, v := range n.NameLookup {
+		if !yield(v) {
+			break
+		}
+	}
+}
+
+func (n *Network) Find(name string) *Node {
+	return n.NameLookup[name]
+}
+
+func (n *Network) Walk(start *Node, directions []Direction, end *Node) int {
+	currentNode := start
+
+	steps := 0
+
+	for {
+		for _, direction := range directions {
+			if currentNode.Name == end.Name {
+				return steps
+			}
+
+			steps++
+
+			if direction == Left {
+				currentNode = currentNode.Left
+			} else {
+				currentNode = currentNode.Right
 			}
 		}
 	}
-	return bestScenicScore
 }
 
-func (f *Forest) NumberVisibleTrees() int {
-	// The edges are always visible.
+func (n *Network) GhostWalk(start []*Node, directions []Direction, shouldEnd func(nodes []*Node) bool) int {
+	currentNodes := make([]*Node, len(start))
+	copy(currentNodes, start)
 
-	// The beginning and end of each row is visible.
-	numVisible := 2 * len(f.Trees)
+	steps := 0
 
-	// The entire top and bottom rows are visible.  Make sure not to count the beginning and
-	// end of the top and bottom rows twice: they are accounted for above.
-	numVisible += 2 * (len(f.Trees[0]) - 2)
+	for {
+		for _, direction := range directions {
+			// log.Println("Current nodes:")
+			// for _, n := range currentNodes {
+			// 	fmt.Println(n.Describe())
+			// }
 
-	// Now look at the inner trees.
-	for i := 1; i < len(f.Trees)-1; i++ {
-		row := f.Trees[i]
-	NextTree:
-		for j := 1; j < len(row)-1; j++ {
-			// Need to check four cardinal directions.
-			height := row[j]
+			if shouldEnd(currentNodes) {
+				return steps
+			}
 
-			treeVisible := true
+			steps++
 
-			// Up
-		Up:
-			for up := i - 1; up >= 0; up-- {
-				upRow := f.Trees[up]
-				if upRow[j] >= height {
-					treeVisible = false
-					break Up
+			for i := range currentNodes {
+				if direction == Left {
+					currentNodes[i] = currentNodes[i].Left
+				} else {
+					currentNodes[i] = currentNodes[i].Right
 				}
 			}
-
-			// If it's visible, then we can short circuit the remaining checks.
-			if treeVisible {
-				numVisible++
-				continue NextTree
-			}
-
-			treeVisible = true
-
-		Down:
-			// Down
-			for down := i + 1; down < len(f.Trees); down++ {
-				downRow := f.Trees[down]
-				if downRow[j] >= height {
-					treeVisible = false
-					break Down
-				}
-			}
-
-			// If it's visible, then we can short circuit the remaining checks.
-			if treeVisible {
-				numVisible++
-				continue NextTree
-			}
-
-			treeVisible = true
-
-			// Left
-		Left:
-			for left := j - 1; left >= 0; left-- {
-				if row[left] >= height {
-					treeVisible = false
-					break Left
-				}
-			}
-
-			// If it's visible, then we can short circuit the remaining checks.
-			if treeVisible {
-				numVisible++
-				continue NextTree
-			}
-
-			treeVisible = true
-
-			// Right
-		Right:
-			for right := j + 1; right < len(row); right++ {
-				if row[right] >= height {
-					treeVisible = false
-					break Right
-				}
-			}
-
-			// If it's visible, then we can short circuit the remaining checks.
-			if treeVisible {
-				numVisible++
-				continue NextTree
-			}
 		}
 	}
-
-	return numVisible
 }
 
-func ParseTreeRow(str string) (TreeRow, error) {
-	if str == "" {
-		return TreeRow{}, errors.New("empty line")
+func ParseNetwork(lines []string) *Network {
+	network := NewNetwork()
+
+	nodeDescriptions := make([]NodeDescription, 0)
+
+	for _, line := range lines {
+		nodeDescriptions = append(nodeDescriptions, ParseNodeDescription(line))
 	}
 
-	row := make(TreeRow, 0)
-
-	for _, char := range str {
-		if char < '0' || char > '9' {
-			return TreeRow{}, errors.New("invalid line")
-		}
-
-		height := byte(char) - byte('0')
-		row = append(row, height)
+	// Go through the descriptons twice: first to gather all the nodes, then to connect them up.
+	for _, nd := range nodeDescriptions {
+		node := &Node{Name: nd.Name}
+		network.NameLookup[nd.Name] = node
 	}
 
-	return row, nil
+	for _, nd := range nodeDescriptions {
+		node := network.NameLookup[nd.Name]
+		node.Left = network.NameLookup[nd.LeftName]
+		node.Right = network.NameLookup[nd.RightName]
+	}
+
+	return network
 }
 
-func ParseForest(strs []string) (*Forest, error) {
-	f := NewForest()
+type Direction byte
 
-	for _, line := range strs {
-		row, err := ParseTreeRow(line)
-		if err != nil {
-			return nil, err
+const (
+	Left Direction = iota
+	Right
+)
+
+func ParseDirections(line string) []Direction {
+	directionsRE := regexp.MustCompile(`L|R`)
+	directionsMatches := directionsRE.FindAllString(line, -1)
+
+	directions := make([]Direction, 0)
+
+	for _, d := range directionsMatches {
+		var direction Direction
+
+		switch d {
+		case "L":
+			direction = Left
+		case "R":
+			direction = Right
+		default:
+			log.Panicf("unknown direction '%s'\n", d)
 		}
 
-		f.Trees = append(f.Trees, row)
+		directions = append(directions, direction)
 	}
 
-	return f, nil
+	return directions
+}
+
+func ParseNodeDescription(line string) NodeDescription {
+	nodeNameRE := regexp.MustCompile(`[0-9A-Z]{3}`)
+	nodeNameMatches := nodeNameRE.FindAllString(line, -1)
+
+	if len(nodeNameMatches) != 3 {
+		log.Panicf("unexpected node line '%s'\n", line)
+	}
+
+	return NodeDescription{
+		Name:      nodeNameMatches[0],
+		LeftName:  nodeNameMatches[1],
+		RightName: nodeNameMatches[2],
+	}
 }
 
 func day08(fileContents string) error {
-	// Scan the forest in.
-	f, err := ParseForest(strings.Split(string(fileContents), "\n"))
-	if err != nil {
-		return err
+	lines := strings.Split(string(fileContents), "\n")
+
+	directions := ParseDirections(lines[0])
+
+	if lines[1] != "" {
+		log.Panicf("unexpected non blank line in input: '%s'\n", lines[1])
 	}
 
-	// Part 1: How many trees are visible from outside the forest?
-	log.Printf("Number of visible trees: %d\n", f.NumberVisibleTrees())
+	n := ParseNetwork(lines[2:])
 
-	// Part 2: What is the highest possible scenic score possible for any tree?
-	log.Printf("Best possible scenic score: %d\n", f.BestScenicScore())
+	// Part 1: Starting at AAA, follow the left/right instructions. How many steps are required to reach ZZZ?
+	steps := n.Walk(n.Find("AAA"), directions, n.Find("ZZZ"))
+
+	log.Printf("Total steps: %d\n", steps)
+
+	// Part 2: Simultaneously start on every node that ends with A. How many steps does it take before you're
+	// only on nodes that end with Z?
+
+	nodesEndingInA := make([]*Node, 0)
+	nodesEndingInZ := make([]*Node, 0)
+
+	n.ForEach(func(node *Node) bool {
+		if strings.HasSuffix(node.Name, "A") {
+			nodesEndingInA = append(nodesEndingInA, node)
+		} else if strings.HasSuffix(node.Name, "Z") {
+			nodesEndingInZ = append(nodesEndingInZ, node)
+		}
+
+		return true
+	})
+
+	log.Println("Nodes ending in A")
+	for _, n := range nodesEndingInA {
+		fmt.Println(n.Describe())
+	}
+
+	log.Println("Nodes ending in Z")
+	for _, n := range nodesEndingInZ {
+		fmt.Println(n.Describe())
+	}
+
+	ghostSteps := n.GhostWalk(nodesEndingInA, directions, func(nodes []*Node) bool {
+		log.Print("Nodes under consideration:")
+		for _, n := range nodes {
+			log.Print(n.Name)
+		}
+
+		for _, n := range nodes {
+			if len(n) != 3 {
+				log.Panicf("unexpected node name: '%s'\n", n.Name)
+			}
+			if !strings.HasSuffix(n.Name, "Z") {
+				return false
+			}
+		}
+
+		return true
+	})
+
+	log.Printf("Total ghost steps: %d\n", ghostSteps)
 
 	return nil
 }

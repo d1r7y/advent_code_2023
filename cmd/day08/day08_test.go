@@ -1,87 +1,145 @@
 package day08
 
 import (
+	"log"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseTreeRow(t *testing.T) {
+func TestParseDirection(t *testing.T) {
 	type testCase struct {
-		str             string
-		expectedErr     bool
-		expectedTreeRow TreeRow
+		str                string
+		expectedDirections []Direction
 	}
 
 	testCases := []testCase{
-		{"30373", false, TreeRow{3, 0, 3, 7, 3}},
-		{"25512", false, TreeRow{2, 5, 5, 1, 2}},
-		{"65332", false, TreeRow{6, 5, 3, 3, 2}},
-		{"33549", false, TreeRow{3, 3, 5, 4, 9}},
-		{"35390", false, TreeRow{3, 5, 3, 9, 0}},
-		{"3a390", true, TreeRow{}},
-		{"", true, TreeRow{}},
+		{"RL", []Direction{Right, Left}},
+		{"LLR", []Direction{Left, Left, Right}},
+		{"L", []Direction{Left}},
+		{"R", []Direction{Right}},
+		{"LLLL", []Direction{Left, Left, Left, Left}},
+		{"RRRR", []Direction{Right, Right, Right, Right}},
 	}
 
 	for _, test := range testCases {
-		row, err := ParseTreeRow(test.str)
+		directions := ParseDirections(test.str)
+		assert.Equal(t, test.expectedDirections, directions, test.str)
+	}
+}
 
-		if test.expectedErr {
-			assert.Error(t, err)
-		} else {
-			assert.NoError(t, err)
-			assert.Equal(t, test.expectedTreeRow, row)
+func TestParseNodeDescription(t *testing.T) {
+	type testCase struct {
+		str                     string
+		expectedNodeDescription NodeDescription
+	}
+
+	testCases := []testCase{
+		{"FTD = (QRN, JJC)", NodeDescription{"FTD", "QRN", "JJC"}},
+		{"AAA = (BBB, CCC)", NodeDescription{"AAA", "BBB", "CCC"}},
+		{"CKF = (XCC, SGZ)", NodeDescription{"CKF", "XCC", "SGZ"}},
+		{"GGG = (GGG, GGG)", NodeDescription{"GGG", "GGG", "GGG"}},
+		{"ZZZ = (ZZZ, ZZZ)", NodeDescription{"ZZZ", "ZZZ", "ZZZ"}},
+	}
+
+	for _, test := range testCases {
+		description := ParseNodeDescription(test.str)
+		assert.Equal(t, test.expectedNodeDescription, description, test.str)
+	}
+}
+
+func TestWalk(t *testing.T) {
+	type testCase struct {
+		content       string
+		expectedSteps int
+	}
+
+	testCases := []testCase{
+		{`RL
+
+	AAA = (BBB, CCC)
+	BBB = (DDD, EEE)
+	CCC = (ZZZ, GGG)
+	DDD = (DDD, DDD)
+	EEE = (EEE, EEE)
+	GGG = (GGG, GGG)
+	ZZZ = (ZZZ, ZZZ)`, 2},
+		{`LLR
+
+	AAA = (BBB, BBB)
+	BBB = (AAA, ZZZ)
+	ZZZ = (ZZZ, ZZZ))`, 6},
+	}
+
+	for _, test := range testCases {
+		lines := strings.Split(test.content, "\n")
+
+		directions := ParseDirections(lines[0])
+
+		if lines[1] != "" {
+			log.Panicf("unexpected non blank line in input: '%s'\n", lines[1])
 		}
+
+		n := ParseNetwork(lines[2:])
+
+		steps := n.Walk(n.Find("AAA"), directions, n.Find("ZZZ"))
+
+		assert.Equal(t, test.expectedSteps, steps)
 	}
+
 }
 
-func TestParseForest(t *testing.T) {
-	strs := []string{
-		"30373",
-		"25512",
-		"65332",
-		"33549",
-		"35390",
-	}
-	rows := []TreeRow{
-		{3, 0, 3, 7, 3},
-		{2, 5, 5, 1, 2},
-		{6, 5, 3, 3, 2},
-		{3, 3, 5, 4, 9},
-		{3, 5, 3, 9, 0},
+func TestGhostWalk(t *testing.T) {
+	type testCase struct {
+		content       string
+		expectedSteps int
 	}
 
-	f, err := ParseForest(strs)
-	assert.NoError(t, err)
-	for i, r := range f.Trees {
-		assert.Equal(t, rows[i], r)
-	}
-}
+	testCases := []testCase{
+		{`LR
 
-func TestNumberVisibleTrees(t *testing.T) {
-	strs := []string{
-		"30373",
-		"25512",
-		"65332",
-		"33549",
-		"35390",
+		11A = (11B, XXX)
+		11B = (XXX, 11Z)
+		11Z = (11B, XXX)
+		22A = (22B, XXX)
+		22B = (22C, 22C)
+		22C = (22Z, 22Z)
+		22Z = (22B, 22B)
+		XXX = (XXX, XXX)`, 6},
 	}
-	f, err := ParseForest(strs)
-	assert.NoError(t, err)
-	assert.Equal(t, 21, f.NumberVisibleTrees())
-}
 
-func TestScenicScoreForTree(t *testing.T) {
-	strs := []string{
-		"30373",
-		"25512",
-		"65332",
-		"33549",
-		"35390",
+	for _, test := range testCases {
+		lines := strings.Split(test.content, "\n")
+
+		directions := ParseDirections(lines[0])
+
+		if lines[1] != "" {
+			log.Panicf("unexpected non blank line in input: '%s'\n", lines[1])
+		}
+
+		n := ParseNetwork(lines[2:])
+
+		nodesEndingInA := make([]*Node, 0)
+
+		n.ForEach(func(node *Node) bool {
+			if strings.HasSuffix(node.Name, "A") {
+				nodesEndingInA = append(nodesEndingInA, node)
+			}
+
+			return true
+		})
+
+		steps := n.GhostWalk(nodesEndingInA, directions, func(nodes []*Node) bool {
+			for _, n := range nodes {
+				if !strings.HasSuffix(n.Name, "Z") {
+					return false
+				}
+			}
+
+			return true
+		})
+
+		assert.Equal(t, test.expectedSteps, steps)
 	}
-	f, err := ParseForest(strs)
-	assert.NoError(t, err)
-
-	assert.Equal(t, 4, f.scenicScoreForTree(2, 1))
-	assert.Equal(t, 8, f.scenicScoreForTree(2, 3))
 }
