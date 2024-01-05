@@ -97,7 +97,7 @@ func TestTotalCardsWon(t *testing.T) {
 		}
 	}
 
-	for i, _ := range cards {
+	for i := range cards {
 		winningMatches := cards[i].WinningMatches()
 
 		for duplicates := 0; duplicates < cards[i].Count; duplicates++ {

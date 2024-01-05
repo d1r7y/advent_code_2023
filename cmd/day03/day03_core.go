@@ -25,7 +25,7 @@ func (a *AdjacentNumberIndexes) AddAdjacentNumberIndex(index int) {
 
 func (a *AdjacentNumberIndexes) GetAdjacentNumberIndexes() []int {
 	adjacentIndexes := make([]int, 0)
-	for k, _ := range a.Map {
+	for k := range a.Map {
 		adjacentIndexes = append(adjacentIndexes, k)
 	}
 
@@ -129,7 +129,7 @@ func day03(fileContents string) error {
 	}
 
 	// Find the number adjacent to each part.
-	for i, _ := range allParts {
+	for i := range allParts {
 
 		for j, n := range allNumbers {
 			if IsAdjacent(allParts[i].Location, n.Start, n.End) {

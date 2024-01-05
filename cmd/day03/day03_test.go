@@ -106,7 +106,7 @@ func TestParseSchematicPartNumberSum(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Find the number adjacent to each part.
-	for i, _ := range allParts {
+	for i := range allParts {
 
 		for j, n := range allNumbers {
 			if IsAdjacent(allParts[i].Location, n.Start, n.End) {
@@ -143,7 +143,7 @@ func TestParseSchematicGearRatioSum(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Find the number adjacent to each part.
-	for i, _ := range allParts {
+	for i := range allParts {
 
 		for j, n := range allNumbers {
 			if IsAdjacent(allParts[i].Location, n.Start, n.End) {

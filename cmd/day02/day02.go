@@ -16,7 +16,7 @@ import (
 var day02Cmd = &cobra.Command{
 	Use:   "day02",
 	Short: "Day 2 of Advent of Code 2023",
-	Long:  `Rock Paper Scissors`,
+	Long:  `Cube Conundrum`,
 	Run: func(cmd *cobra.Command, args []string) {
 		df, err := os.Open(inputPath)
 		if err != nil {

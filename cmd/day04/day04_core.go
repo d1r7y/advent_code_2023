@@ -110,7 +110,7 @@ func day04(fileContents string) error {
 	log.Printf("Cards worth a total of %d points\n", totalPoints)
 
 	// Part 2: Including the original set of scratchcards, how many total scratchcards do you end up with?
-	for i, _ := range cards {
+	for i := range cards {
 		winningMatches := cards[i].WinningMatches()
 
 		for duplicates := 0; duplicates < cards[i].Count; duplicates++ {
