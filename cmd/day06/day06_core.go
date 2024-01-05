@@ -1,92 +1,154 @@
 package day06
 
 import (
-	"fmt"
+	"log"
+	"regexp"
+	"strconv"
+	"strings"
 )
 
-type Datastream string
-
-func (d Datastream) GetPacketMarkerStart() int {
-	const StartOfPacketMarkerLength = 4
-
-	characters := make([]byte, 0)
-
-NextCharacter:
-	for i, c := range d {
-		if len(characters) == StartOfPacketMarkerLength {
-			// Remove the first character
-			characters = characters[1:]
-		}
-
-		characters = append(characters, byte(c))
-
-		// Do we have enough characters to look for the packet marker?
-		if len(characters) == StartOfPacketMarkerLength {
-			uniqueMap := make(map[byte]bool)
-
-			for _, c := range characters {
-				if _, ok := uniqueMap[c]; ok {
-					continue NextCharacter
-				}
-
-				uniqueMap[c] = true
-			}
-
-			return i + 1
-		}
-	}
-
-	return -1
+type Race struct {
+	Time     int
+	Distance int
 }
 
-func (d Datastream) GetMessageMarkerStart() int {
-	const StartOfMessageMarkerLength = 14
+func ParseIntList(line string, prefix string) []int {
+	intRE := regexp.MustCompile(`[0-9]+`)
+	intMatches := intRE.FindAllString(strings.TrimPrefix(line, prefix), -1)
 
-	characters := make([]byte, 0)
+	intList := make([]int, 0)
 
-NextCharacter:
-	for i, c := range d {
-		if len(characters) == StartOfMessageMarkerLength {
-			// Remove the first character
-			characters = characters[1:]
+	for _, s := range intMatches {
+		i, err := strconv.Atoi(s)
+		if err != nil {
+			log.Fatal(err)
 		}
 
-		characters = append(characters, byte(c))
+		intList = append(intList, i)
+	}
 
-		// Do we have enough characters to look for the message marker?
-		if len(characters) == StartOfMessageMarkerLength {
-			uniqueMap := make(map[byte]bool)
+	return intList
+}
 
-			for _, c := range characters {
-				if _, ok := uniqueMap[c]; ok {
-					continue NextCharacter
-				}
+func ParseIntListRemovingAllWhitespace(line string, prefix string) []int {
+	intRE := regexp.MustCompile(`[0-9]+`)
+	intMatches := intRE.FindAllString(strings.Join(strings.Fields(strings.TrimPrefix(line, prefix)), ""), -1)
 
-				uniqueMap[c] = true
+	intList := make([]int, 0)
+
+	for _, s := range intMatches {
+		i, err := strconv.Atoi(s)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		intList = append(intList, i)
+	}
+
+	return intList
+}
+
+func SpeedAtTime(pressTime int, raceTime int) int {
+	if pressTime < raceTime {
+		return pressTime
+	} else {
+		return 0
+	}
+}
+
+func DistanceAtTime(speed int, time int) int {
+	return speed * time
+}
+
+func DoesBeatRecord(pressTime int, raceTime int, recordDistance int) bool {
+	return DistanceAtTime(SpeedAtTime(pressTime, raceTime), raceTime-pressTime) > recordDistance
+}
+
+func ParseRaces(fileContents string, part1 bool) []Race {
+	races := make([]Race, 0)
+
+	for _, line := range strings.Split(fileContents, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(strings.TrimSpace(line), "Time: "):
+			var timeList []int
+			if part1 {
+				timeList = ParseIntList(line, "Time: ")
+			} else {
+				timeList = ParseIntListRemovingAllWhitespace(line, "Time: ")
 			}
 
-			return i + 1
+			for i, t := range timeList {
+				if i >= len(races) {
+					races = append(races, Race{})
+				}
+
+				races[i].Time = t
+			}
+		case strings.HasPrefix(strings.TrimSpace(line), "Distance: "):
+			var distanceList []int
+			if part1 {
+				distanceList = ParseIntList(line, "Distance: ")
+			} else {
+				distanceList = ParseIntListRemovingAllWhitespace(line, "Distance: ")
+			}
+
+			for i, d := range distanceList {
+				if i >= len(races) {
+					races = append(races, Race{})
+				}
+
+				races[i].Distance = d
+			}
+		default:
+			// Range line.
+			log.Panicf("unexpected line '%s'\n", line)
 		}
 	}
 
-	return -1
+	return races
 }
 
 func day06(fileContents string) error {
-	// Part 1: What is the offset of the first valid packet marker?  Packets need 4 unique characters.
-	ds := Datastream(string(fileContents))
-	if validOffset := ds.GetPacketMarkerStart(); validOffset > 0 {
-		fmt.Printf("Valid packet marker starting at offset %d\n", validOffset)
-	} else {
-		fmt.Print("No valid packet marker found")
+	races1 := ParseRaces(fileContents, true)
+
+	// Part 1: Determine the number of ways you could beat the record in each race.
+	// What do you get if you multiply these numbers together?
+	totalWinningWays := 1
+
+	for _, r := range races1 {
+		beatRecordCount := 0
+		for pt := 0; pt < r.Time; pt++ {
+			if DoesBeatRecord(pt, r.Time, r.Distance) {
+				beatRecordCount++
+			}
+		}
+
+		totalWinningWays *= beatRecordCount
 	}
 
-	// Part 2: What is the offset of the first valid message marker?  Messages need 14 unique characters.
-	if validOffset := ds.GetMessageMarkerStart(); validOffset > 0 {
-		fmt.Printf("Valid message marker starting at offset %d\n", validOffset)
-	} else {
-		fmt.Print("No valid message marker found")
+	log.Printf("Total winning ways: %d\n", totalWinningWays)
+
+	races2 := ParseRaces(fileContents, false)
+
+	// Part 1: How many ways can you beat the record in this one much longer race?
+	totalWinningWays = 1
+
+	for _, r := range races2 {
+		beatRecordCount := 0
+		for pt := 0; pt < r.Time; pt++ {
+			if DoesBeatRecord(pt, r.Time, r.Distance) {
+				beatRecordCount++
+			}
+		}
+
+		totalWinningWays *= beatRecordCount
 	}
+
+	log.Printf("Total winning ways: %d\n", totalWinningWays)
 
 	return nil
 }
