@@ -73,11 +73,6 @@ func (n *Network) GhostWalk(start []*Node, directions []Direction, shouldEnd fun
 
 	for {
 		for _, direction := range directions {
-			// log.Println("Current nodes:")
-			// for _, n := range currentNodes {
-			// 	fmt.Println(n.Describe())
-			// }
-
 			if shouldEnd(currentNodes) {
 				return steps
 			}
