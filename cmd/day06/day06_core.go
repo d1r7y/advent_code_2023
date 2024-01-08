@@ -2,50 +2,14 @@ package day06
 
 import (
 	"log"
-	"regexp"
-	"strconv"
 	"strings"
+
+	"github.com/d1r7y/advent_2023/utilities"
 )
 
 type Race struct {
 	Time     int
 	Distance int
-}
-
-func ParseIntList(line string, prefix string) []int {
-	intRE := regexp.MustCompile(`[0-9]+`)
-	intMatches := intRE.FindAllString(strings.TrimPrefix(line, prefix), -1)
-
-	intList := make([]int, 0)
-
-	for _, s := range intMatches {
-		i, err := strconv.Atoi(s)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		intList = append(intList, i)
-	}
-
-	return intList
-}
-
-func ParseIntListRemovingAllWhitespace(line string, prefix string) []int {
-	intRE := regexp.MustCompile(`[0-9]+`)
-	intMatches := intRE.FindAllString(strings.Join(strings.Fields(strings.TrimPrefix(line, prefix)), ""), -1)
-
-	intList := make([]int, 0)
-
-	for _, s := range intMatches {
-		i, err := strconv.Atoi(s)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		intList = append(intList, i)
-	}
-
-	return intList
 }
 
 func SpeedAtTime(pressTime int, raceTime int) int {
@@ -76,9 +40,9 @@ func ParseRaces(fileContents string, part1 bool) []Race {
 		case strings.HasPrefix(strings.TrimSpace(line), "Time: "):
 			var timeList []int
 			if part1 {
-				timeList = ParseIntList(line, "Time: ")
+				timeList = utilities.ParseIntList(strings.TrimPrefix(line, "Time: "))
 			} else {
-				timeList = ParseIntListRemovingAllWhitespace(line, "Time: ")
+				timeList = utilities.ParseIntListRemovingAllWhitespace(strings.TrimPrefix(line, "Time: "))
 			}
 
 			for i, t := range timeList {
@@ -91,9 +55,9 @@ func ParseRaces(fileContents string, part1 bool) []Race {
 		case strings.HasPrefix(strings.TrimSpace(line), "Distance: "):
 			var distanceList []int
 			if part1 {
-				distanceList = ParseIntList(line, "Distance: ")
+				distanceList = utilities.ParseIntList(strings.TrimPrefix(line, "Distance: "))
 			} else {
-				distanceList = ParseIntListRemovingAllWhitespace(line, "Distance: ")
+				distanceList = utilities.ParseIntListRemovingAllWhitespace(strings.TrimPrefix(line, "Distance: "))
 			}
 
 			for i, d := range distanceList {
