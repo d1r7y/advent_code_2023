@@ -583,33 +583,8 @@ func CanConnect(t1 Tile, d Direction, t2 Tile) bool {
 }
 
 func IsLeft(start Position, end Position, point Position) int {
-	if point.X == 1 && point.Y == 1 {
-		fmt.Print("here")
-	}
-
 	val := (end.X-start.X)*(point.Y-start.Y) - (point.X-start.X)*(end.Y-start.Y)
 	return val
-}
-
-func PointInPolyWinding(point Position, vertices []Position) bool {
-	winding := 0
-
-	for i := 0; i < len(vertices)-1; i++ {
-		if vertices[i].Y <= point.Y {
-			if vertices[i+1].Y > point.Y {
-				if IsLeft(vertices[i], vertices[i+1], point) > 0 {
-					winding++
-				}
-			}
-
-		} else if vertices[i+1].Y <= point.Y {
-			if IsLeft(vertices[i], vertices[i+1], point) < 0 {
-				winding--
-			}
-		}
-	}
-
-	return winding != 0
 }
 
 func PointInPolyCrossing(point Position, vertices []Position) bool {
