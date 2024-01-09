@@ -1,491 +1,527 @@
 package day10
 
 import (
+	"log"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewCPU(t *testing.T) {
-	cpu := NewCPU()
-
-	assert.Equal(t, CPU{X: 1, Cycle: 1, CRTPosition: 0, CRTScreen: NewNullOutput(), XSampleBuffer: make([]Sample, 0)}, *cpu)
-}
-
-func TestParseInstruction(t *testing.T) {
+func TestNewGrid(t *testing.T) {
 	type testCase struct {
-		str                 string
-		expectedErr         bool
-		expectedInstruction Instruction
+		content      []string
+		expectedGrid *Grid
 	}
 
 	testCases := []testCase{
-		{"", true, nil},
-		{"noop", false, NewNoop()},
-		{"addx 0", false, NewAddx(0)},
-		{"addx 100", false, NewAddx(100)},
-		{"addx -100", false, NewAddx(-100)},
-		{"addy 0", true, nil},
-		{"addx a", true, nil},
-		{"100 addx", true, nil},
-	}
-
-	for _, test := range testCases {
-		instruction, err := ParseInstruction(test.str)
-
-		if test.expectedErr {
-			assert.Error(t, err)
-		} else {
-			assert.NoError(t, err)
-			assert.Equal(t, test.expectedInstruction, instruction)
-		}
-	}
-}
-
-func TestValidateInstruction(t *testing.T) {
-	type testCase struct {
-		instruction        Instruction
-		expectedDescribe   string
-		expectedCycleCount int
-	}
-
-	testCases := []testCase{
-		{NewNoop(), "noop", 1},
-		{NewAddx(0), "addx 0", 2},
-		{NewAddx(-10), "addx -10", 2},
-	}
-
-	for _, test := range testCases {
-		assert.Equal(t, test.expectedDescribe, test.instruction.Describe())
-		assert.Equal(t, test.expectedCycleCount, test.instruction.CycleCount())
-	}
-}
-
-func TestRunInstructions(t *testing.T) {
-	type testCase struct {
-		instructions  []Instruction
-		expectedX     int
-		expectedCycle int
-	}
-
-	testCases := []testCase{
-		{[]Instruction{NewNoop()}, 1, 2},
-		{[]Instruction{NewAddx(0)}, 1, 3},
-		{[]Instruction{NewAddx(-10)}, -9, 3},
-		{[]Instruction{NewAddx(5)}, 6, 3},
-		{[]Instruction{NewAddx(5), NewNoop(), NewAddx(-2)}, 4, 6},
-	}
-
-	for _, test := range testCases {
-		c := NewCPU()
-
-		for _, i := range test.instructions {
-			c.RunInstruction(i)
-		}
-
-		assert.Equal(t, test.expectedX, c.X)
-		assert.Equal(t, test.expectedCycle, c.Cycle)
-	}
-}
-
-func TestSampleX(t *testing.T) {
-	type testCase struct {
-		program                     string
-		sampleCycles                []int
-		expectedSamples             []Sample
-		expectedTotalSignalStrength int
-	}
-
-	testCases := []testCase{
-		{
-			`addx 15
-addx -11
-addx 6
-addx -3
-addx 5
-addx -1
-addx -8
-addx 13
-addx 4
-noop
-addx -1
-addx 5
-addx -1
-addx 5
-addx -1
-addx 5
-addx -1
-addx 5
-addx -1
-addx -35
-addx 1
-addx 24
-addx -19
-addx 1
-addx 16
-addx -11
-noop
-noop
-addx 21
-addx -15
-noop
-noop
-addx -3
-addx 9
-addx 1
-addx -3
-addx 8
-addx 1
-addx 5
-noop
-noop
-noop
-noop
-noop
-addx -36
-noop
-addx 1
-addx 7
-noop
-noop
-noop
-addx 2
-addx 6
-noop
-noop
-noop
-noop
-noop
-addx 1
-noop
-noop
-addx 7
-addx 1
-noop
-addx -13
-addx 13
-addx 7
-noop
-addx 1
-addx -33
-noop
-noop
-noop
-addx 2
-noop
-noop
-noop
-addx 8
-noop
-addx -1
-addx 2
-addx 1
-noop
-addx 17
-addx -9
-addx 1
-addx 1
-addx -3
-addx 11
-noop
-noop
-addx 1
-noop
-addx 1
-noop
-noop
-addx -13
-addx -19
-addx 1
-addx 3
-addx 26
-addx -30
-addx 12
-addx -1
-addx 3
-addx 1
-noop
-noop
-noop
-addx -9
-addx 18
-addx 1
-addx 2
-noop
-noop
-addx 9
-noop
-noop
-noop
-addx -1
-addx 2
-addx -37
-addx 1
-addx 3
-noop
-addx 15
-addx -21
-addx 22
-addx -6
-addx 1
-noop
-addx 2
-addx 1
-noop
-addx -10
-noop
-noop
-addx 20
-addx 1
-addx 2
-addx 2
-addx -6
-addx -11
-noop
-noop
-noop`,
-			[]int{20, 60, 100, 140, 180, 220},
-			[]Sample{NewSample(20, 21), NewSample(60, 19), NewSample(100, 18), NewSample(140, 21), NewSample(180, 16), NewSample(220, 18)},
-			13140,
+		{[]string{
+			".....",
+			".S-7.",
+			".|.|.",
+			".L-J.",
+			".....",
+		},
+			&Grid{StartPosition: Position{1, 1},
+				Rows: []Row{
+					{Ground, Ground, Ground, Ground, Ground},
+					{Ground, Start, HorizontalPipe, BendSouthWestPipe, Ground},
+					{Ground, VerticalPipe, Ground, VerticalPipe, Ground},
+					{Ground, BendNorthEastPipe, HorizontalPipe, BendNorthWestPipe, Ground},
+					{Ground, Ground, Ground, Ground, Ground},
+				}},
+		},
+		{[]string{
+			"-L|F7",
+			"7S-7|",
+			"L|7||",
+			"-L-J|",
+			"L|-JF",
+		},
+			&Grid{StartPosition: Position{1, 1},
+				Rows: []Row{
+					{HorizontalPipe, BendNorthEastPipe, VerticalPipe, BendSouthEastPipe, BendSouthWestPipe},
+					{BendSouthWestPipe, Start, HorizontalPipe, BendSouthWestPipe, VerticalPipe},
+					{BendNorthEastPipe, VerticalPipe, BendSouthWestPipe, VerticalPipe, VerticalPipe},
+					{HorizontalPipe, BendNorthEastPipe, HorizontalPipe, BendNorthWestPipe, VerticalPipe},
+					{BendNorthEastPipe, VerticalPipe, HorizontalPipe, BendNorthWestPipe, BendSouthEastPipe},
+				}},
 		},
 	}
 
 	for _, test := range testCases {
-		c := NewCPU()
-
-		c.SetXSampleCycles(test.sampleCycles)
-
-		instructions, err := ParseInstructions(strings.Split(test.program, "\n"))
-		assert.NoError(t, err)
-
-		for _, i := range instructions {
-			c.RunInstruction(i)
-		}
-
-		samples := c.GetXSampleBuffer()
-
-		assert.Equal(t, test.expectedSamples, samples)
-
-		totalSignalStrength := 0
-
-		for _, sample := range samples {
-			totalSignalStrength += sample.Cycle * sample.Value
-		}
-
-		assert.Equal(t, test.expectedTotalSignalStrength, totalSignalStrength)
+		assert.Equal(t, test.expectedGrid, ParseGrid(test.content))
 	}
 }
 
-func TestShouldDrawSprite(t *testing.T) {
+func TestGridDescribe(t *testing.T) {
 	type testCase struct {
-		spritePosition int
-		beamPosition   int
-		expectedResult bool
+		content []string
 	}
 
 	testCases := []testCase{
-		{5, 5, true},
-		{5, 4, true},
-		{5, 6, true},
-		{5, 7, false},
-		{5, 1, false},
-		{5, 10, false},
-		{5, 3, false},
-		{1, 0, true},
+		{[]string{
+			".....",
+			".S-7.",
+			".|.|.",
+			".L-J.",
+			".....",
+		}},
+		{[]string{
+			"-L|F7",
+			"7S-7|",
+			"L|7||",
+			"-L-J|",
+			"L|-JF",
+		}},
 	}
 
 	for _, test := range testCases {
-		assert.Equal(t, test.expectedResult, ShouldDrawSprite(test.spritePosition, test.beamPosition))
+		grid := ParseGrid(test.content)
+		assert.Equal(t, test.content, strings.Split(grid.Describe(), "\n"))
 	}
 }
 
-func TestOutput(t *testing.T) {
+func TestGridGetNeighborTile(t *testing.T) {
 	type testCase struct {
-		program string
-		output  string
+		content      []string
+		position     Position
+		direction    Direction
+		expectedTile Tile
 	}
 
 	testCases := []testCase{
-		{
-			`addx 15
-addx -11
-addx 6
-addx -3
-addx 5
-addx -1
-addx -8
-addx 13
-addx 4
-noop
-addx -1
-addx 5
-addx -1
-addx 5
-addx -1
-addx 5
-addx -1
-addx 5
-addx -1
-addx -35
-addx 1
-addx 24
-addx -19
-addx 1
-addx 16
-addx -11
-noop
-noop
-addx 21
-addx -15
-noop
-noop
-addx -3
-addx 9
-addx 1
-addx -3
-addx 8
-addx 1
-addx 5
-noop
-noop
-noop
-noop
-noop
-addx -36
-noop
-addx 1
-addx 7
-noop
-noop
-noop
-addx 2
-addx 6
-noop
-noop
-noop
-noop
-noop
-addx 1
-noop
-noop
-addx 7
-addx 1
-noop
-addx -13
-addx 13
-addx 7
-noop
-addx 1
-addx -33
-noop
-noop
-noop
-addx 2
-noop
-noop
-noop
-addx 8
-noop
-addx -1
-addx 2
-addx 1
-noop
-addx 17
-addx -9
-addx 1
-addx 1
-addx -3
-addx 11
-noop
-noop
-addx 1
-noop
-addx 1
-noop
-noop
-addx -13
-addx -19
-addx 1
-addx 3
-addx 26
-addx -30
-addx 12
-addx -1
-addx 3
-addx 1
-noop
-noop
-noop
-addx -9
-addx 18
-addx 1
-addx 2
-noop
-noop
-addx 9
-noop
-noop
-noop
-addx -1
-addx 2
-addx -37
-addx 1
-addx 3
-noop
-addx 15
-addx -21
-addx 22
-addx -6
-addx 1
-noop
-addx 2
-addx 1
-noop
-addx -10
-noop
-noop
-addx 20
-addx 1
-addx 2
-addx 2
-addx -6
-addx -11
-noop
-noop
-noop`,
-			`##..##..##..##..##..##..##..##..##..##..
-###...###...###...###...###...###...###.
-####....####....####....####....####....
-#####.....#####.....#####.....#####.....
-######......######......######......####
-#######.......#######.......#######.....`,
-		},
+		{[]string{
+			".....",
+			".S-7.",
+			".|.|.",
+			".L-J.",
+			".....",
+		}, Position{0, 0}, East, Ground},
+		{[]string{
+			"-L|F7",
+			"7S-7|",
+			"L|7||",
+			"-L-J|",
+			"L|-JF",
+		}, Position{0, 1}, East, Start},
+		{[]string{
+			"-L|F7",
+			"7S-7|",
+			"L|7||",
+			"-L-J|",
+			"L|-JF",
+		}, Position{3, 0}, East, BendSouthWestPipe},
+		{[]string{
+			".....",
+			".S-7.",
+			".|.|.",
+			".L-J.",
+			".....",
+		}, Position{2, 2}, East, VerticalPipe},
+		{[]string{
+			".....",
+			".S-7.",
+			".|.|.",
+			".L-J.",
+			".....",
+		}, Position{2, 2}, North, HorizontalPipe},
+		{[]string{
+			".....",
+			".S-7.",
+			".|.|.",
+			".L-J.",
+			".....",
+		}, Position{2, 2}, South, HorizontalPipe},
+		{[]string{
+			".....",
+			".S-7.",
+			".|.|.",
+			".L-J.",
+			".....",
+		}, Position{4, 3}, West, BendNorthWestPipe},
 	}
 
 	for _, test := range testCases {
-		c := NewCPU()
-		o := NewBufferedOutput()
+		grid := ParseGrid(test.content)
+		assert.Equal(t, test.expectedTile, grid.GetNeighborTile(test.position, test.direction))
+	}
+}
 
-		c.SetOutput(o)
+func TestCanTileExit(t *testing.T) {
+	type testCase struct {
+		tile         Tile
+		direction    Direction
+		expectedExit bool
+	}
 
-		instructions, err := ParseInstructions(strings.Split(test.program, "\n"))
-		assert.NoError(t, err)
+	testCases := []testCase{
+		{VerticalPipe, North, true},
+		{VerticalPipe, South, true},
+		{VerticalPipe, East, false},
+		{VerticalPipe, West, false},
 
-		for _, i := range instructions {
-			c.RunInstruction(i)
-		}
+		{HorizontalPipe, North, false},
+		{HorizontalPipe, South, false},
+		{HorizontalPipe, East, true},
+		{HorizontalPipe, West, true},
 
-		screen := ""
+		{BendNorthEastPipe, North, true},
+		{BendNorthEastPipe, South, false},
+		{BendNorthEastPipe, East, true},
+		{BendNorthEastPipe, West, false},
 
-		for i, line := range o.Screen {
-			screen += string(line)
+		{BendNorthWestPipe, North, true},
+		{BendNorthWestPipe, South, false},
+		{BendNorthWestPipe, East, false},
+		{BendNorthWestPipe, West, true},
 
-			if i != len(o.Screen)-1 {
-				screen += "\n"
+		{BendSouthEastPipe, North, false},
+		{BendSouthEastPipe, South, true},
+		{BendSouthEastPipe, East, true},
+		{BendSouthEastPipe, West, false},
+
+		{BendSouthWestPipe, North, false},
+		{BendSouthWestPipe, South, true},
+		{BendSouthWestPipe, East, false},
+		{BendSouthWestPipe, West, true},
+
+		{Ground, North, false},
+		{Ground, South, false},
+		{Ground, East, false},
+		{Ground, West, false},
+
+		{Start, North, false},
+		{Start, South, false},
+		{Start, East, false},
+		{Start, West, false},
+	}
+
+	for _, test := range testCases {
+		assert.Equal(t, test.expectedExit, CanTileExit(test.tile, test.direction))
+	}
+}
+
+func TestIsTilePip(t *testing.T) {
+	type testCase struct {
+		tile         Tile
+		expectedPipe bool
+	}
+
+	testCases := []testCase{
+		{VerticalPipe, true},
+		{HorizontalPipe, true},
+		{BendNorthEastPipe, true},
+		{BendNorthWestPipe, true},
+		{BendSouthEastPipe, true},
+		{BendSouthWestPipe, true},
+		{Ground, false},
+		{Start, false},
+	}
+
+	for _, test := range testCases {
+		assert.Equal(t, test.expectedPipe, IsTilePipe(test.tile))
+	}
+}
+
+func TestCanConnect(t *testing.T) {
+	type testCase struct {
+		tile1           Tile
+		direction       Direction
+		tile2           Tile
+		expectedConnect bool
+	}
+
+	testCases := []testCase{
+		{VerticalPipe, North, VerticalPipe, true},
+		{VerticalPipe, North, HorizontalPipe, false},
+		{VerticalPipe, North, BendNorthEastPipe, false},
+		{VerticalPipe, North, BendNorthWestPipe, false},
+		{VerticalPipe, North, BendSouthEastPipe, true},
+		{VerticalPipe, North, BendSouthWestPipe, true},
+
+		{VerticalPipe, South, VerticalPipe, true},
+		{VerticalPipe, South, HorizontalPipe, false},
+		{VerticalPipe, South, BendNorthEastPipe, true},
+		{VerticalPipe, South, BendNorthWestPipe, true},
+		{VerticalPipe, South, BendSouthEastPipe, false},
+		{VerticalPipe, South, BendSouthWestPipe, false},
+
+		{VerticalPipe, East, VerticalPipe, false},
+		{VerticalPipe, East, HorizontalPipe, false},
+		{VerticalPipe, East, BendNorthEastPipe, false},
+		{VerticalPipe, East, BendNorthWestPipe, false},
+		{VerticalPipe, East, BendSouthEastPipe, false},
+		{VerticalPipe, East, BendSouthWestPipe, false},
+
+		{VerticalPipe, West, VerticalPipe, false},
+		{VerticalPipe, West, HorizontalPipe, false},
+		{VerticalPipe, West, BendNorthEastPipe, false},
+		{VerticalPipe, West, BendNorthWestPipe, false},
+		{VerticalPipe, West, BendSouthEastPipe, false},
+		{VerticalPipe, West, BendSouthWestPipe, false},
+
+		{HorizontalPipe, North, VerticalPipe, false},
+		{HorizontalPipe, North, HorizontalPipe, false},
+		{HorizontalPipe, North, BendNorthEastPipe, false},
+		{HorizontalPipe, North, BendNorthWestPipe, false},
+		{HorizontalPipe, North, BendSouthEastPipe, false},
+		{HorizontalPipe, North, BendSouthWestPipe, false},
+
+		{HorizontalPipe, South, VerticalPipe, false},
+		{HorizontalPipe, South, HorizontalPipe, false},
+		{HorizontalPipe, South, BendNorthEastPipe, false},
+		{HorizontalPipe, South, BendNorthWestPipe, false},
+		{HorizontalPipe, South, BendSouthEastPipe, false},
+		{HorizontalPipe, South, BendSouthWestPipe, false},
+
+		{HorizontalPipe, East, VerticalPipe, false},
+		{HorizontalPipe, East, HorizontalPipe, true},
+		{HorizontalPipe, East, BendNorthEastPipe, false},
+		{HorizontalPipe, East, BendNorthWestPipe, true},
+		{HorizontalPipe, East, BendSouthEastPipe, false},
+		{HorizontalPipe, East, BendSouthWestPipe, true},
+
+		{HorizontalPipe, West, VerticalPipe, false},
+		{HorizontalPipe, West, HorizontalPipe, true},
+		{HorizontalPipe, West, BendNorthEastPipe, true},
+		{HorizontalPipe, West, BendNorthWestPipe, false},
+		{HorizontalPipe, West, BendSouthEastPipe, true},
+		{HorizontalPipe, West, BendSouthWestPipe, false},
+
+		{BendNorthEastPipe, North, VerticalPipe, true},
+		{BendNorthEastPipe, North, HorizontalPipe, false},
+		{BendNorthEastPipe, North, BendNorthEastPipe, false},
+		{BendNorthEastPipe, North, BendNorthWestPipe, false},
+		{BendNorthEastPipe, North, BendSouthEastPipe, true},
+		{BendNorthEastPipe, North, BendSouthWestPipe, true},
+
+		{BendNorthEastPipe, South, VerticalPipe, false},
+		{BendNorthEastPipe, South, HorizontalPipe, false},
+		{BendNorthEastPipe, South, BendNorthEastPipe, false},
+		{BendNorthEastPipe, South, BendNorthWestPipe, false},
+		{BendNorthEastPipe, South, BendSouthEastPipe, false},
+		{BendNorthEastPipe, South, BendSouthWestPipe, false},
+
+		{BendNorthEastPipe, East, VerticalPipe, false},
+		{BendNorthEastPipe, East, HorizontalPipe, true},
+		{BendNorthEastPipe, East, BendNorthEastPipe, false},
+		{BendNorthEastPipe, East, BendNorthWestPipe, true},
+		{BendNorthEastPipe, East, BendSouthEastPipe, false},
+		{BendNorthEastPipe, East, BendSouthWestPipe, true},
+
+		{BendNorthEastPipe, West, VerticalPipe, false},
+		{BendNorthEastPipe, West, HorizontalPipe, false},
+		{BendNorthEastPipe, West, BendNorthEastPipe, false},
+		{BendNorthEastPipe, West, BendNorthWestPipe, false},
+		{BendNorthEastPipe, West, BendSouthEastPipe, false},
+		{BendNorthEastPipe, West, BendSouthWestPipe, false},
+
+		{BendNorthWestPipe, North, VerticalPipe, true},
+		{BendNorthWestPipe, North, HorizontalPipe, false},
+		{BendNorthWestPipe, North, BendNorthEastPipe, false},
+		{BendNorthWestPipe, North, BendNorthWestPipe, false},
+		{BendNorthWestPipe, North, BendSouthEastPipe, true},
+		{BendNorthWestPipe, North, BendSouthWestPipe, true},
+
+		{BendNorthWestPipe, South, VerticalPipe, false},
+		{BendNorthWestPipe, South, HorizontalPipe, false},
+		{BendNorthWestPipe, South, BendNorthEastPipe, false},
+		{BendNorthWestPipe, South, BendNorthWestPipe, false},
+		{BendNorthWestPipe, South, BendSouthEastPipe, false},
+		{BendNorthWestPipe, South, BendSouthWestPipe, false},
+
+		{BendNorthWestPipe, East, VerticalPipe, false},
+		{BendNorthWestPipe, East, HorizontalPipe, false},
+		{BendNorthWestPipe, East, BendNorthEastPipe, false},
+		{BendNorthWestPipe, East, BendNorthWestPipe, false},
+		{BendNorthWestPipe, East, BendSouthEastPipe, false},
+		{BendNorthWestPipe, East, BendSouthWestPipe, false},
+
+		{BendNorthWestPipe, West, VerticalPipe, false},
+		{BendNorthWestPipe, West, HorizontalPipe, true},
+		{BendNorthWestPipe, West, BendNorthEastPipe, true},
+		{BendNorthWestPipe, West, BendNorthWestPipe, false},
+		{BendNorthWestPipe, West, BendSouthEastPipe, true},
+		{BendNorthWestPipe, West, BendSouthWestPipe, false},
+
+		{BendSouthEastPipe, North, VerticalPipe, false},
+		{BendSouthEastPipe, North, HorizontalPipe, false},
+		{BendSouthEastPipe, North, BendNorthEastPipe, false},
+		{BendSouthEastPipe, North, BendNorthWestPipe, false},
+		{BendSouthEastPipe, North, BendSouthEastPipe, false},
+		{BendSouthEastPipe, North, BendSouthWestPipe, false},
+
+		{BendSouthEastPipe, South, VerticalPipe, true},
+		{BendSouthEastPipe, South, HorizontalPipe, false},
+		{BendSouthEastPipe, South, BendNorthEastPipe, true},
+		{BendSouthEastPipe, South, BendNorthWestPipe, true},
+		{BendSouthEastPipe, South, BendSouthEastPipe, false},
+		{BendSouthEastPipe, South, BendSouthWestPipe, false},
+
+		{BendSouthEastPipe, East, VerticalPipe, false},
+		{BendSouthEastPipe, East, HorizontalPipe, true},
+		{BendSouthEastPipe, East, BendNorthEastPipe, false},
+		{BendSouthEastPipe, East, BendNorthWestPipe, true},
+		{BendSouthEastPipe, East, BendSouthEastPipe, false},
+		{BendSouthEastPipe, East, BendSouthWestPipe, true},
+
+		{BendSouthEastPipe, West, VerticalPipe, false},
+		{BendSouthEastPipe, West, HorizontalPipe, false},
+		{BendSouthEastPipe, West, BendNorthEastPipe, false},
+		{BendSouthEastPipe, West, BendNorthWestPipe, false},
+		{BendSouthEastPipe, West, BendSouthEastPipe, false},
+		{BendSouthEastPipe, West, BendSouthWestPipe, false},
+
+		{BendSouthWestPipe, North, VerticalPipe, false},
+		{BendSouthWestPipe, North, HorizontalPipe, false},
+		{BendSouthWestPipe, North, BendNorthEastPipe, false},
+		{BendSouthWestPipe, North, BendNorthWestPipe, false},
+		{BendSouthWestPipe, North, BendSouthEastPipe, false},
+		{BendSouthWestPipe, North, BendSouthWestPipe, false},
+
+		{BendSouthWestPipe, South, VerticalPipe, true},
+		{BendSouthWestPipe, South, HorizontalPipe, false},
+		{BendSouthWestPipe, South, BendNorthEastPipe, true},
+		{BendSouthWestPipe, South, BendNorthWestPipe, true},
+		{BendSouthWestPipe, South, BendSouthEastPipe, false},
+		{BendSouthWestPipe, South, BendSouthWestPipe, false},
+
+		{BendSouthWestPipe, East, VerticalPipe, false},
+		{BendSouthWestPipe, East, HorizontalPipe, false},
+		{BendSouthWestPipe, East, BendNorthEastPipe, false},
+		{BendSouthWestPipe, East, BendNorthWestPipe, false},
+		{BendSouthWestPipe, East, BendSouthEastPipe, false},
+		{BendSouthWestPipe, East, BendSouthWestPipe, false},
+
+		{BendSouthWestPipe, West, VerticalPipe, false},
+		{BendSouthWestPipe, West, HorizontalPipe, true},
+		{BendSouthWestPipe, West, BendNorthEastPipe, true},
+		{BendSouthWestPipe, West, BendNorthWestPipe, false},
+		{BendSouthWestPipe, West, BendSouthEastPipe, true},
+		{BendSouthWestPipe, West, BendSouthWestPipe, false},
+	}
+
+	for _, test := range testCases {
+		assert.Equal(t, test.expectedConnect, CanConnect(test.tile1, test.direction, test.tile2))
+	}
+}
+
+func TestGridDistance(t *testing.T) {
+	type testCase struct {
+		content          []string
+		expectedDistance int
+	}
+
+	testCases := []testCase{
+		{[]string{
+			".....",
+			".S-7.",
+			".|.|.",
+			".L-J.",
+			".....",
+		}, 4},
+		{[]string{
+			"..F7.",
+			".FJ|.",
+			"SJ.L7",
+			"|F--J",
+			"LJ...",
+		}, 8},
+	}
+
+	for _, test := range testCases {
+		grid := ParseGrid(test.content)
+
+		distance := 0
+
+		grid.TraverseLoop(func(p Position, d Direction, t Tile) bool {
+			distance++
+			return true
+		})
+
+		assert.Equal(t, test.expectedDistance, distance/2)
+	}
+}
+
+func TestGridArea(t *testing.T) {
+	type testCase struct {
+		content      []string
+		expectedArea int
+	}
+
+	testCases := []testCase{
+		{[]string{
+			"...........",
+			".S-------7.",
+			".|F-----7|.",
+			".||.....||.",
+			".||.....||.",
+			".|L-7.F-J|.",
+			".|..|.|..|.",
+			".L--J.L--J.",
+			"...........",
+		}, 4},
+		{[]string{
+			"..........",
+			".S------7.",
+			".|F----7|.",
+			".||....||.",
+			".||....||.",
+			".|L-7F-J|.",
+			".|..||..|.",
+			".L--JL--J.",
+			"..........",
+		}, 4},
+		{[]string{
+			".F----7F7F7F7F-7....",
+			".|F--7||||||||FJ....",
+			".||.FJ||||||||L7....",
+			"FJL7L7LJLJ||LJ.L-7..",
+			"L--J.L7...LJS7F-7L7.",
+			"....F-J..F7FJ|L7L7L7",
+			"....L7.F7||L7|.L7L7|",
+			".....|FJLJ|FJ|F7|.LJ",
+			"....FJL-7.||.||||...",
+			"....L---J.LJ.LJLJ...",
+		}, 8},
+	}
+
+	for _, test := range testCases {
+		grid := ParseGrid(test.content)
+
+		visited := NewDistances(grid.Bounds)
+
+		areas := NewDistances(grid.Bounds)
+
+		vertices := make([]Position, 0)
+
+		grid.TraverseLoop(func(p Position, d Direction, t Tile) bool {
+			vertices = append(vertices, p)
+			visited.SetDistance(p, 10)
+			return true
+		})
+
+		log.Println("\n", visited.Describe())
+
+		vertices = append(vertices, grid.StartPosition)
+		area := 0
+
+		for y := 0; y < visited.Bounds.Height; y++ {
+			for x := 0; x < visited.Bounds.Width; x++ {
+				d := visited.GetDistance(Position{x, y})
+				if d < 0 {
+					if PointInPolyCrossing(Position{x, y}, vertices) {
+						areas.SetDistance(Position{x, y}, 10)
+						area++
+					} else {
+						areas.SetDistance(Position{x, y}, 0)
+					}
+				}
 			}
 		}
 
-		assert.Equal(t, test.output, screen)
+		log.Println("\n", areas.Describe())
+		assert.Equal(t, test.expectedArea, area)
 	}
 }

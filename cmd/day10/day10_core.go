@@ -1,309 +1,678 @@
 package day10
 
 import (
-	"errors"
 	"fmt"
-	"sort"
+	"log"
+	"math"
 	"strings"
 )
 
-type Sample struct {
-	Cycle int
-	Value int
+type Tile byte
+
+func (t Tile) Describe() string {
+	switch t {
+	case VerticalPipe:
+		return "|"
+	case HorizontalPipe:
+		return "-"
+	case BendNorthEastPipe:
+		return "L"
+	case BendNorthWestPipe:
+		return "J"
+	case BendSouthWestPipe:
+		return "7"
+	case BendSouthEastPipe:
+		return "F"
+	case Ground:
+		return "."
+	case Start:
+		return "S"
+	}
+
+	log.Panicf("unknown tile %d\n", t)
+	return " "
 }
 
-func NewSample(cycle, value int) Sample {
-	return Sample{Cycle: cycle, Value: value}
+const (
+	VerticalPipe Tile = iota
+	HorizontalPipe
+	BendNorthEastPipe
+	BendNorthWestPipe
+	BendSouthWestPipe
+	BendSouthEastPipe
+	Ground
+	Start
+)
+
+type Direction byte
+
+func (d Direction) Describe() string {
+	switch d {
+	case North:
+		return "N"
+	case South:
+		return "S"
+	case East:
+		return "E"
+	case West:
+		return "W"
+	}
+
+	log.Panicf("unknown directions %d\n", d)
+	return " "
 }
 
-type CPU struct {
-	X             int
-	CRTPosition   int
-	CRTScreen     Output
-	Cycle         int
-	XSampleCycles []int
-	XSampleBuffer []Sample
+const (
+	North Direction = iota
+	East
+	South
+	West
+)
+
+type Position struct {
+	X int
+	Y int
 }
 
-func NewCPU() *CPU {
-	return &CPU{X: 1, Cycle: 1, CRTPosition: 0, CRTScreen: NewNullOutput(), XSampleBuffer: make([]Sample, 0)}
+type Size struct {
+	Width  int
+	Height int
 }
 
-func ShouldDrawSprite(spritePosition, beam int) bool {
-	return beam >= spritePosition-1 && beam <= spritePosition+1
+type Row []Tile
+
+type Distances struct {
+	Bounds Size
+	Rows   [][]int
 }
 
-func (c *CPU) RunInstruction(i Instruction) {
-	for cycle := i.CycleCount(); cycle > 0; cycle-- {
-		// Check if we should draw the pixel
-		if ShouldDrawSprite(c.X, c.CRTPosition) {
-			c.CRTScreen.DrawLitPixel()
-		} else {
-			c.CRTScreen.DrawDarkPixel()
+func NewDistances(bounds Size) *Distances {
+	distances := &Distances{
+		Bounds: bounds,
+		Rows:   make([][]int, bounds.Height),
+	}
+
+	for y := 0; y < distances.Bounds.Height; y++ {
+		row := make([]int, bounds.Width)
+		for x := 0; x < distances.Bounds.Width; x++ {
+			row[x] = -1
 		}
 
-		for _, sampleCycle := range c.XSampleCycles {
-			if c.Cycle == sampleCycle {
-				// Sample X now.
-				c.XSampleBuffer = append(c.XSampleBuffer, NewSample(c.Cycle, c.X))
+		distances.Rows[y] = row
+	}
+
+	return distances
+}
+
+func (d *Distances) Describe() string {
+	str := ""
+
+	for y, row := range d.Rows {
+		for _, distance := range row {
+
+			if distance < 0 {
+				str += "."
+			} else {
+				if distance == 0 {
+					str += "0"
+				} else {
+					str += fmt.Sprintf("%d", int(math.Log(float64(distance))))
+				}
 			}
 		}
 
-		c.Cycle++
-		c.CRTPosition++
-		if c.CRTPosition > 39 {
-			c.CRTPosition = 0
-			c.CRTScreen.NextLine()
+		if y < d.Bounds.Height-1 {
+			str += "\n"
 		}
 	}
 
-	i.UpdateCPUState(c)
+	return str
 }
 
-func (c *CPU) SetXSampleCycles(sampleCycles []int) {
-	c.XSampleCycles = sampleCycles
-	sort.Ints(c.XSampleCycles)
-}
-
-func (c *CPU) GetXSampleBuffer() []Sample {
-	return c.XSampleBuffer
-}
-
-func (c *CPU) SetOutput(o Output) {
-	c.CRTScreen = o
-
-	o.SetScreenDimensions(40, 6)
-	o.Reset()
-}
-
-type Output interface {
-	SetScreenDimensions(width, height int)
-
-	DrawLitPixel()
-	DrawDarkPixel()
-
-	Reset()
-	NextLine()
-}
-
-type NullOutput struct {
-}
-
-func NewNullOutput() *NullOutput {
-	return &NullOutput{}
-}
-
-func (o *NullOutput) SetScreenDimensions(width, height int) {
-}
-
-func (o *NullOutput) DrawLitPixel() {
-}
-
-func (o *NullOutput) DrawDarkPixel() {
-}
-
-func (o *NullOutput) Reset() {
-}
-
-func (o *NullOutput) NextLine() {
-}
-
-type StdoutOutput struct {
-}
-
-func NewStdoutOutput() *StdoutOutput {
-	return &StdoutOutput{}
-}
-
-func (o *StdoutOutput) SetScreenDimensions(width, height int) {
-}
-
-func (o *StdoutOutput) DrawLitPixel() {
-	fmt.Printf("#")
-}
-
-func (o *StdoutOutput) DrawDarkPixel() {
-	fmt.Printf(".")
-}
-
-func (o *StdoutOutput) Reset() {
-}
-
-func (o *StdoutOutput) NextLine() {
-	fmt.Printf("\n")
-}
-
-type BufferedOutput struct {
-	Width  int
-	Height int
-
-	CurrentX int
-	CurrentY int
-
-	Screen [][]byte
-}
-
-func NewBufferedOutput() *BufferedOutput {
-	o := &BufferedOutput{}
-	o.SetScreenDimensions(40, 6)
-
-	return o
-}
-
-func (o *BufferedOutput) SetScreenDimensions(width, height int) {
-	o.Width = width
-	o.Height = height
-
-	o.Screen = make([][]byte, o.Height)
-
-	for i := range o.Screen {
-		o.Screen[i] = make([]byte, o.Width)
+func (d *Distances) validatePosition(p Position) {
+	if p.Y < 0 || p.Y >= d.Bounds.Height {
+		log.Panicf("invalid position %d,%d\n", p.X, p.Y)
+	}
+	if p.X < 0 || p.X >= d.Bounds.Width {
+		log.Panicf("invalid position %d,%d\n", p.X, p.Y)
 	}
 }
 
-func (o *BufferedOutput) DrawLitPixel() {
-	currentRow := o.Screen[o.CurrentY]
+func (d *Distances) SetDistance(p Position, distance int) {
+	d.validatePosition(p)
 
-	currentRow[o.CurrentX] = '#'
-	o.CurrentX++
+	d.Rows[p.Y][p.X] = distance
 }
 
-func (o *BufferedOutput) DrawDarkPixel() {
-	currentRow := o.Screen[o.CurrentY]
+func (d *Distances) GetDistance(p Position) int {
+	d.validatePosition(p)
 
-	currentRow[o.CurrentX] = '.'
-	o.CurrentX++
+	return d.Rows[p.Y][p.X]
 }
 
-func (o *BufferedOutput) Reset() {
-	o.CurrentX = 0
-	o.CurrentY = 0
+type Grid struct {
+	StartPosition Position
+	Bounds        Size
+	Rows          []Row
 }
 
-func (o *BufferedOutput) NextLine() {
-	o.CurrentX = 0
+func ParseGrid(lines []string) *Grid {
 
-	o.CurrentY++
-	if o.CurrentY >= o.Height {
-		o.CurrentY = 0
-	}
-}
+	grid := &Grid{}
+	grid.Rows = make([]Row, 0)
 
-type Instruction interface {
-	Describe() string
-	CycleCount() int
+	for y, line := range lines {
+		row := make([]Tile, 0)
 
-	UpdateCPUState(cpu *CPU)
-}
+		for x, t := range line {
+			var tile Tile
 
-type Noop struct {
-}
+			switch t {
+			case '|':
+				tile = VerticalPipe
+			case '-':
+				tile = HorizontalPipe
+			case 'L':
+				tile = BendNorthEastPipe
+			case 'J':
+				tile = BendNorthWestPipe
+			case '7':
+				tile = BendSouthWestPipe
+			case 'F':
+				tile = BendSouthEastPipe
+			case '.':
+				tile = Ground
+			case 'S':
+				tile = Start
 
-func NewNoop() Noop {
-	return Noop{}
-}
+				grid.StartPosition.X = x
+				grid.StartPosition.Y = y
+			}
 
-func (i Noop) Describe() string {
-	return "noop"
-}
-
-func (i Noop) CycleCount() int {
-	return 1
-}
-
-func (i Noop) UpdateCPUState(cpu *CPU) {
-}
-
-type Addx struct {
-	Value int
-}
-
-func NewAddx(v int) Addx {
-	return Addx{Value: v}
-}
-
-func (i Addx) Describe() string {
-	return fmt.Sprintf("addx %d", i.Value)
-}
-
-func (i Addx) CycleCount() int {
-	return 2
-}
-
-func (i Addx) UpdateCPUState(cpu *CPU) {
-	cpu.X += i.Value
-}
-
-func ParseInstruction(str string) (Instruction, error) {
-	elements := strings.Split(str, " ")
-
-	switch elements[0] {
-	case "noop":
-		return NewNoop(), nil
-	case "addx":
-		var value int
-		c, err := fmt.Sscanf(str, "addx %d", &value)
-		if err != nil {
-			return nil, err
-		}
-		if c != 1 {
-			return nil, errors.New("malformed instruction")
-		}
-		return NewAddx(value), nil
-	}
-
-	return nil, errors.New("unknown instruction")
-}
-
-func ParseInstructions(lines []string) ([]Instruction, error) {
-	instructions := make([]Instruction, 0)
-	for _, line := range lines {
-		instruction, err := ParseInstruction(line)
-		if err != nil {
-			return []Instruction{}, err
+			if y == 0 {
+				grid.Bounds.Width++
+			}
+			row = append(row, tile)
 		}
 
-		instructions = append(instructions, instruction)
+		grid.Bounds.Height++
+		grid.Rows = append(grid.Rows, row)
 	}
 
-	return instructions, nil
+	// Now determine what pipe is at the starting location.  Find the two directions leading out of the start node.
+	exitDirections := make([]Direction, 0)
+
+	grid.ForEachNeighbor(grid.StartPosition, func(p Position, d Direction, t Tile) bool {
+		if CanTileExit(t, InvertDirection(d)) {
+			exitDirections = append(exitDirections, d)
+		}
+
+		return true
+	})
+
+	if len(exitDirections) != 2 {
+		log.Panicf("unexpected number of exit directions: %v\n", exitDirections)
+	}
+
+	startTile := TileFromDirections(exitDirections[0], exitDirections[1])
+
+	grid.SetTile(grid.StartPosition, startTile)
+
+	return grid
+}
+
+func (g *Grid) validatePosition(p Position) {
+	if p.Y < 0 || p.Y >= g.Bounds.Height {
+		log.Panicf("invalid position %d,%d\n", p.X, p.Y)
+	}
+	if p.X < 0 || p.X >= g.Bounds.Width {
+		log.Panicf("invalid position %d,%d\n", p.X, p.Y)
+	}
+}
+
+func (g *Grid) ForEachNeighbor(p Position, callback func(p Position, d Direction, t Tile) bool) {
+	g.validatePosition(p)
+
+	if p.Y > 0 {
+		// North
+		if !callback(Position{p.X, p.Y - 1}, North, g.GetTile(Position{p.X, p.Y - 1})) {
+			return
+		}
+	}
+
+	if p.Y < g.Bounds.Height-1 {
+		// South
+		if !callback(Position{p.X, p.Y + 1}, South, g.GetTile(Position{p.X, p.Y + 1})) {
+			return
+		}
+	}
+
+	if p.X < g.Bounds.Width-1 {
+		// East
+		if !callback(Position{p.X + 1, p.Y}, East, g.GetTile(Position{p.X + 1, p.Y})) {
+			return
+		}
+	}
+
+	if p.X > 0 {
+		// West
+		if !callback(Position{p.X - 1, p.Y}, West, g.GetTile(Position{p.X - 1, p.Y})) {
+			return
+		}
+	}
+}
+
+func (g *Grid) TraverseLoop(callback func(p Position, d Direction, t Tile) bool) {
+	currentPosition := g.StartPosition
+	currentTile := g.GetTile(currentPosition)
+	var currentDirection Direction
+
+	// Pick an initial starting direction.
+	switch currentTile {
+	case VerticalPipe:
+		currentDirection = North
+	case HorizontalPipe:
+		currentDirection = East
+	case BendNorthEastPipe:
+		currentDirection = South
+	case BendNorthWestPipe:
+		currentDirection = South
+	case BendSouthEastPipe:
+		currentDirection = North
+	case BendSouthWestPipe:
+		currentDirection = North
+	default:
+		log.Panicf("unexpected tile: %s\n", currentTile.Describe())
+	}
+
+	for {
+		if !callback(currentPosition, currentDirection, currentTile) {
+			break
+		}
+
+		currentDirection = UnusedExitDirection(currentTile, currentDirection)
+		currentPosition = UpdatePosition(currentPosition, currentDirection)
+		currentTile = g.GetTile(currentPosition)
+
+		// We're back to the beginning.
+		if currentPosition == g.StartPosition {
+			break
+		}
+	}
+}
+
+func (g *Grid) GetTile(p Position) Tile {
+	g.validatePosition(p)
+
+	return g.Rows[p.Y][p.X]
+}
+
+func (g *Grid) SetTile(p Position, t Tile) {
+	g.validatePosition(p)
+
+	g.Rows[p.Y][p.X] = t
+}
+
+func (g *Grid) GetNeighborTile(p Position, d Direction) Tile {
+	// Make sure we aren't going out of bounds.
+	switch d {
+	case North:
+		if p.Y == 0 {
+			log.Panicf("invalid direction %d from position %d,%d\n", d, p.X, p.Y)
+		}
+		return g.Rows[p.Y-1][p.X]
+	case East:
+		if p.X == g.Bounds.Width-1 {
+			log.Panicf("invalid direction %d from position %d,%d\n", d, p.X, p.Y)
+		}
+		return g.Rows[p.Y][p.X+1]
+	case South:
+		if p.Y == g.Bounds.Height-1 {
+			log.Panicf("invalid direction %d from position %d,%d\n", d, p.X, p.Y)
+		}
+		return g.Rows[p.Y+1][p.X]
+	case West:
+		if p.X == 0 {
+			log.Panicf("invalid direction %d from position %d,%d\n", d, p.X, p.Y)
+		}
+		return g.Rows[p.Y][p.X-1]
+	}
+
+	log.Panicf("unexpected direction %d\n", d)
+	return Start
+}
+
+func (g *Grid) Describe() string {
+	str := ""
+
+	for y, row := range g.Rows {
+		for x, t := range row {
+			ts := t.Describe()
+
+			if g.StartPosition.X == x && g.StartPosition.Y == y {
+				ts = "S"
+			}
+
+			str += ts
+		}
+
+		if y < g.Bounds.Height-1 {
+			str += "\n"
+		}
+	}
+
+	return str
+}
+
+func IsTilePipe(t Tile) bool {
+	switch t {
+	case VerticalPipe:
+	case HorizontalPipe:
+	case BendNorthEastPipe:
+	case BendNorthWestPipe:
+	case BendSouthEastPipe:
+	case BendSouthWestPipe:
+	default:
+		return false
+	}
+
+	return true
+}
+
+func TileFromDirections(d1 Direction, d2 Direction) Tile {
+	if d1 == d2 {
+		log.Panicf("both directions are the same %d\n", d1)
+	}
+
+	if (d1 == North && d2 == South) || (d1 == South && d2 == North) {
+		return VerticalPipe
+	}
+	if (d1 == West && d2 == East) || (d1 == East && d2 == West) {
+		return HorizontalPipe
+	}
+	if (d1 == North && d2 == East) || (d1 == East && d2 == North) {
+		return BendNorthEastPipe
+	}
+	if (d1 == North && d2 == West) || (d1 == West && d2 == North) {
+		return BendNorthWestPipe
+	}
+	if (d1 == South && d2 == East) || (d1 == East && d2 == South) {
+		return BendSouthEastPipe
+	}
+	if (d1 == South && d2 == West) || (d1 == West && d2 == South) {
+		return BendSouthWestPipe
+	}
+
+	log.Panicf("unexpected directions %d and %d\n", d1, d2)
+
+	return Start
+}
+
+func InvertDirection(d Direction) Direction {
+	switch d {
+	case North:
+		return South
+	case South:
+		return North
+	case East:
+		return West
+	case West:
+		return East
+	}
+
+	log.Panicf("unexpected direction: %d\n", d)
+	return North
+}
+
+func UnusedExitDirection(t Tile, d Direction) Direction {
+	switch t {
+	case VerticalPipe:
+		if d == North {
+			return North
+		} else if d == South {
+			return South
+		}
+		log.Panicf("unexpected tile/direction: %s %s\n", t.Describe(), d.Describe())
+	case HorizontalPipe:
+		if d == East {
+			return East
+		} else if d == West {
+			return West
+		}
+		log.Panicf("unexpected tile/direction: %s %s\n", t.Describe(), d.Describe())
+	case BendNorthEastPipe:
+		if d == South {
+			return East
+		} else if d == West {
+			return North
+		}
+		log.Panicf("unexpected tile/direction: %s %s\n", t.Describe(), d.Describe())
+	case BendNorthWestPipe:
+		if d == South {
+			return West
+		} else if d == East {
+			return North
+		}
+		log.Panicf("unexpected tile/direction: %s %s\n", t.Describe(), d.Describe())
+	case BendSouthEastPipe:
+		if d == North {
+			return East
+		} else if d == West {
+			return South
+		}
+		log.Panicf("unexpected tile/direction: %s %s\n", t.Describe(), d.Describe())
+	case BendSouthWestPipe:
+		if d == North {
+			return West
+		} else if d == East {
+			return South
+		}
+		log.Panicf("unexpected tile/direction: %s %s\n", t.Describe(), d.Describe())
+	}
+
+	log.Panicf("unexpected tile: %s\n", t.Describe())
+	return North
+}
+
+func CanTileExit(t Tile, d Direction) bool {
+	switch t {
+	case VerticalPipe:
+		if d == North || d == South {
+			return true
+		}
+	case HorizontalPipe:
+		if d == East || d == West {
+			return true
+		}
+	case BendNorthEastPipe:
+		if d == North || d == East {
+			return true
+		}
+	case BendNorthWestPipe:
+		if d == North || d == West {
+			return true
+		}
+	case BendSouthEastPipe:
+		if d == South || d == East {
+			return true
+		}
+	case BendSouthWestPipe:
+		if d == South || d == West {
+			return true
+		}
+	}
+
+	return false
+}
+
+func UpdatePosition(p Position, d Direction) Position {
+	newPosition := p
+
+	switch d {
+	case North:
+		newPosition.Y--
+	case South:
+		newPosition.Y++
+	case East:
+		newPosition.X++
+	case West:
+		newPosition.X--
+	}
+
+	return newPosition
+}
+
+// CanConnect Can t1 connect to t2 if t2 is a d neighbor of t1?
+func CanConnect(t1 Tile, d Direction, t2 Tile) bool {
+	if !IsTilePipe(t1) || !IsTilePipe(t2) {
+		log.Panicf("unexpected tile type: %d\n", t1)
+	}
+
+	switch t1 {
+	case VerticalPipe:
+		if d == North {
+			if t2 == BendSouthEastPipe || t2 == BendSouthWestPipe || t2 == VerticalPipe {
+				return true
+			}
+		} else if d == South {
+			if t2 == BendNorthEastPipe || t2 == BendNorthWestPipe || t2 == VerticalPipe {
+				return true
+			}
+		}
+	case HorizontalPipe:
+		if d == East {
+			if t2 == BendNorthWestPipe || t2 == BendSouthWestPipe || t2 == HorizontalPipe {
+				return true
+			}
+		} else if d == West {
+			if t2 == BendNorthEastPipe || t2 == BendSouthEastPipe || t2 == HorizontalPipe {
+				return true
+			}
+		}
+	case BendNorthEastPipe:
+		if d == North && (t2 == BendSouthEastPipe || t2 == BendSouthWestPipe || t2 == VerticalPipe) {
+			return true
+		}
+		if d == East && (t2 == BendSouthWestPipe || t2 == BendNorthWestPipe || t2 == HorizontalPipe) {
+			return true
+		}
+	case BendNorthWestPipe:
+		if d == North && (t2 == BendSouthEastPipe || t2 == BendSouthWestPipe || t2 == VerticalPipe) {
+			return true
+		}
+		if d == West && (t2 == BendNorthEastPipe || t2 == BendSouthEastPipe || t2 == HorizontalPipe) {
+			return true
+		}
+	case BendSouthEastPipe:
+		if d == South && (t2 == BendNorthEastPipe || t2 == BendNorthWestPipe || t2 == VerticalPipe) {
+			return true
+		}
+		if d == East && (t2 == BendNorthWestPipe || t2 == BendSouthWestPipe || t2 == HorizontalPipe) {
+			return true
+		}
+	case BendSouthWestPipe:
+		if d == South && (t2 == BendNorthEastPipe || t2 == BendNorthWestPipe || t2 == VerticalPipe) {
+			return true
+		}
+		if d == West && (t2 == BendNorthEastPipe || t2 == BendSouthEastPipe || t2 == HorizontalPipe) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsLeft(start Position, end Position, point Position) int {
+	if point.X == 1 && point.Y == 1 {
+		fmt.Print("here")
+	}
+
+	val := (end.X-start.X)*(point.Y-start.Y) - (point.X-start.X)*(end.Y-start.Y)
+	return val
+}
+
+func PointInPolyWinding(point Position, vertices []Position) bool {
+	winding := 0
+
+	for i := 0; i < len(vertices)-1; i++ {
+		if vertices[i].Y <= point.Y {
+			if vertices[i+1].Y > point.Y {
+				if IsLeft(vertices[i], vertices[i+1], point) > 0 {
+					winding++
+				}
+			}
+
+		} else if vertices[i+1].Y <= point.Y {
+			if IsLeft(vertices[i], vertices[i+1], point) < 0 {
+				winding--
+			}
+		}
+	}
+
+	return winding != 0
+}
+
+func PointInPolyCrossing(point Position, vertices []Position) bool {
+	crossing := 0
+
+	for i := 0; i < len(vertices)-1; i++ {
+		if (vertices[i].Y <= point.Y && vertices[i+1].Y > point.Y) ||
+			(vertices[i].Y > point.Y && vertices[i+1].Y <= point.Y) {
+			vt := (point.Y - vertices[i].Y) / (vertices[i+1].Y - vertices[i].Y)
+			if point.X < vertices[i].X+vt*(vertices[i+1].X-vertices[i].X) {
+				crossing++
+			}
+		}
+
+	}
+
+	return (crossing & 1) != 0
 }
 
 func day10(fileContents string) error {
-	// Scan computer program in.
-	instructions, err := ParseInstructions(strings.Split(string(fileContents), "\n"))
-	if err != nil {
-		return err
+	// Part 1: Find the single giant loop starting at S. How many steps along the loop does it take
+	// to get from the starting position to the point farthest from the starting position?
+	grid := ParseGrid(strings.Split(strings.TrimSpace(fileContents), "\n"))
+
+	distances := NewDistances(grid.Bounds)
+	distance := 0
+
+	grid.TraverseLoop(func(p Position, d Direction, t Tile) bool {
+		distances.SetDistance(p, distance)
+		distance++
+		return true
+	})
+
+	log.Printf("Steps to furthest point from starting position: %d\n", distance/2)
+
+	// Part 2: Figure out whether you have time to search for the nest by calculating the area
+	// within the loop. How many tiles are enclosed by the loop?
+	vertices := make([]Position, 0)
+
+	visited := NewDistances(grid.Bounds)
+
+	grid.TraverseLoop(func(p Position, d Direction, t Tile) bool {
+		visited.SetDistance(p, 10)
+		vertices = append(vertices, p)
+		return true
+	})
+
+	vertices = append(vertices, grid.StartPosition)
+
+	area := 0
+
+	for y := 0; y < visited.Bounds.Height; y++ {
+		for x := 0; x < visited.Bounds.Width; x++ {
+			d := visited.GetDistance(Position{x, y})
+			if d < 0 {
+				if PointInPolyCrossing(Position{x, y}, vertices) {
+					area++
+				}
+			}
+		}
 	}
 
-	// Part 1: Find the signal strength during the 20th, 60th, 100th, 140th, 180th, and 220th cycles. What is the sum of these six signal strengths?
-	c := NewCPU()
-
-	cyclesToSampleX := []int{20, 60, 100, 140, 180, 220}
-	c.SetXSampleCycles(cyclesToSampleX)
-
-	for _, i := range instructions {
-		c.RunInstruction(i)
-	}
-
-	totalSignalStrength := 0
-
-	for _, sample := range c.GetXSampleBuffer() {
-		totalSignalStrength += sample.Cycle * sample.Value
-	}
-
-	fmt.Printf("Cycle count: %d\n", c.Cycle)
-	fmt.Printf("Total signal strength: %d\n", totalSignalStrength)
-
-	// Part 2: Register X is the sprite location register.  If the CRT beam horizontal counter is +/-1 of X, then draw a lit pixel.  Otherwise, draw
-	// a dark one.  Given a 40x6 "screen", what 8 capital letters are displayed?
-	c2 := NewCPU()
-
-	c2.SetOutput(NewStdoutOutput())
-
-	for _, i := range instructions {
-		c2.RunInstruction(i)
-	}
+	log.Printf("Area enclosed by loop: %d\n", area)
 
 	return nil
 }
