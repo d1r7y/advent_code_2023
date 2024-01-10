@@ -25,3 +25,55 @@ func PrimeFactors(n int) (pfs []int) {
 
 	return
 }
+
+func AbsoluteDifference(a, b int) int {
+	if a < b {
+		return b - a
+	}
+
+	return a - b
+}
+
+type Size2D struct {
+	Width  int
+	Height int
+}
+
+func NewSize2D(Width int, Height int) Size2D {
+	return Size2D{Width, Height}
+}
+
+type Point2D struct {
+	X int
+	Y int
+}
+
+func NewPoint2D(X int, Y int) Point2D {
+	return Point2D{X, Y}
+}
+
+func ManhattanDistance(p1, p2 Point2D) int {
+	return AbsoluteDifference(p1.X, p2.X) + AbsoluteDifference(p1.Y, p2.Y)
+}
+
+func IsLeft(start Point2D, end Point2D, point Point2D) int {
+	val := (end.X-start.X)*(point.Y-start.Y) - (point.X-start.X)*(end.Y-start.Y)
+	return val
+}
+
+func PointInPolyCrossing(point Point2D, vertices []Point2D) bool {
+	crossing := 0
+
+	for i := 0; i < len(vertices)-1; i++ {
+		if (vertices[i].Y <= point.Y && vertices[i+1].Y > point.Y) ||
+			(vertices[i].Y > point.Y && vertices[i+1].Y <= point.Y) {
+			vt := (point.Y - vertices[i].Y) / (vertices[i+1].Y - vertices[i].Y)
+			if point.X < vertices[i].X+vt*(vertices[i+1].X-vertices[i].X) {
+				crossing++
+			}
+		}
+
+	}
+
+	return (crossing & 1) != 0
+}

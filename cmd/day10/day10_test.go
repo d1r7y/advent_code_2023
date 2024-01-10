@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/d1r7y/advent_2023/utilities"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,10 +23,11 @@ func TestNewGrid(t *testing.T) {
 			".L-J.",
 			".....",
 		},
-			&Grid{StartPosition: Position{1, 1},
+			&Grid{StartPosition: utilities.NewPoint2D(1, 1),
+				Bounds: utilities.NewSize2D(5, 5),
 				Rows: []Row{
 					{Ground, Ground, Ground, Ground, Ground},
-					{Ground, Start, HorizontalPipe, BendSouthWestPipe, Ground},
+					{Ground, BendSouthEastPipe, HorizontalPipe, BendSouthWestPipe, Ground},
 					{Ground, VerticalPipe, Ground, VerticalPipe, Ground},
 					{Ground, BendNorthEastPipe, HorizontalPipe, BendNorthWestPipe, Ground},
 					{Ground, Ground, Ground, Ground, Ground},
@@ -38,10 +40,11 @@ func TestNewGrid(t *testing.T) {
 			"-L-J|",
 			"L|-JF",
 		},
-			&Grid{StartPosition: Position{1, 1},
+			&Grid{StartPosition: utilities.NewPoint2D(1, 1),
+				Bounds: utilities.NewSize2D(5, 5),
 				Rows: []Row{
 					{HorizontalPipe, BendNorthEastPipe, VerticalPipe, BendSouthEastPipe, BendSouthWestPipe},
-					{BendSouthWestPipe, Start, HorizontalPipe, BendSouthWestPipe, VerticalPipe},
+					{BendSouthWestPipe, BendSouthEastPipe, HorizontalPipe, BendSouthWestPipe, VerticalPipe},
 					{BendNorthEastPipe, VerticalPipe, BendSouthWestPipe, VerticalPipe, VerticalPipe},
 					{HorizontalPipe, BendNorthEastPipe, HorizontalPipe, BendNorthWestPipe, VerticalPipe},
 					{BendNorthEastPipe, VerticalPipe, HorizontalPipe, BendNorthWestPipe, BendSouthEastPipe},
@@ -85,7 +88,7 @@ func TestGridDescribe(t *testing.T) {
 func TestGridGetNeighborTile(t *testing.T) {
 	type testCase struct {
 		content      []string
-		position     Position
+		position     utilities.Point2D
 		direction    Direction
 		expectedTile Tile
 	}
@@ -97,49 +100,49 @@ func TestGridGetNeighborTile(t *testing.T) {
 			".|.|.",
 			".L-J.",
 			".....",
-		}, Position{0, 0}, East, Ground},
+		}, utilities.NewPoint2D(0, 0), East, Ground},
 		{[]string{
 			"-L|F7",
 			"7S-7|",
 			"L|7||",
 			"-L-J|",
 			"L|-JF",
-		}, Position{0, 1}, East, Start},
+		}, utilities.NewPoint2D(0, 1), East, BendSouthEastPipe},
 		{[]string{
 			"-L|F7",
 			"7S-7|",
 			"L|7||",
 			"-L-J|",
 			"L|-JF",
-		}, Position{3, 0}, East, BendSouthWestPipe},
+		}, utilities.NewPoint2D(3, 0), East, BendSouthWestPipe},
 		{[]string{
 			".....",
 			".S-7.",
 			".|.|.",
 			".L-J.",
 			".....",
-		}, Position{2, 2}, East, VerticalPipe},
+		}, utilities.NewPoint2D(2, 2), East, VerticalPipe},
 		{[]string{
 			".....",
 			".S-7.",
 			".|.|.",
 			".L-J.",
 			".....",
-		}, Position{2, 2}, North, HorizontalPipe},
+		}, utilities.NewPoint2D(2, 2), North, HorizontalPipe},
 		{[]string{
 			".....",
 			".S-7.",
 			".|.|.",
 			".L-J.",
 			".....",
-		}, Position{2, 2}, South, HorizontalPipe},
+		}, utilities.NewPoint2D(2, 2), South, HorizontalPipe},
 		{[]string{
 			".....",
 			".S-7.",
 			".|.|.",
 			".L-J.",
 			".....",
-		}, Position{4, 3}, West, BendNorthWestPipe},
+		}, utilities.NewPoint2D(4, 3), West, BendNorthWestPipe},
 	}
 
 	for _, test := range testCases {
@@ -435,7 +438,7 @@ func TestGridDistance(t *testing.T) {
 
 		distance := 0
 
-		grid.TraverseLoop(func(p Position, d Direction, t Tile) bool {
+		grid.TraverseLoop(func(p utilities.Point2D, d Direction, t Tile) bool {
 			distance++
 			return true
 		})
@@ -494,9 +497,9 @@ func TestGridArea(t *testing.T) {
 
 		areas := NewDistances(grid.Bounds)
 
-		vertices := make([]Position, 0)
+		vertices := make([]utilities.Point2D, 0)
 
-		grid.TraverseLoop(func(p Position, d Direction, t Tile) bool {
+		grid.TraverseLoop(func(p utilities.Point2D, d Direction, t Tile) bool {
 			vertices = append(vertices, p)
 			visited.SetDistance(p, 10)
 			return true
@@ -509,13 +512,13 @@ func TestGridArea(t *testing.T) {
 
 		for y := 0; y < visited.Bounds.Height; y++ {
 			for x := 0; x < visited.Bounds.Width; x++ {
-				d := visited.GetDistance(Position{x, y})
+				d := visited.GetDistance(utilities.NewPoint2D(x, y))
 				if d < 0 {
-					if PointInPolyCrossing(Position{x, y}, vertices) {
-						areas.SetDistance(Position{x, y}, 10)
+					if utilities.PointInPolyCrossing(utilities.NewPoint2D(x, y), vertices) {
+						areas.SetDistance(utilities.NewPoint2D(x, y), 10)
 						area++
 					} else {
-						areas.SetDistance(Position{x, y}, 0)
+						areas.SetDistance(utilities.NewPoint2D(x, y), 0)
 					}
 				}
 			}

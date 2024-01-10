@@ -5,6 +5,8 @@ import (
 	"log"
 	"math"
 	"strings"
+
+	"github.com/d1r7y/advent_2023/utilities"
 )
 
 type Tile byte
@@ -69,24 +71,14 @@ const (
 	West
 )
 
-type Position struct {
-	X int
-	Y int
-}
-
-type Size struct {
-	Width  int
-	Height int
-}
-
 type Row []Tile
 
 type Distances struct {
-	Bounds Size
+	Bounds utilities.Size2D
 	Rows   [][]int
 }
 
-func NewDistances(bounds Size) *Distances {
+func NewDistances(bounds utilities.Size2D) *Distances {
 	distances := &Distances{
 		Bounds: bounds,
 		Rows:   make([][]int, bounds.Height),
@@ -129,7 +121,7 @@ func (d *Distances) Describe() string {
 	return str
 }
 
-func (d *Distances) validatePosition(p Position) {
+func (d *Distances) validatePoint(p utilities.Point2D) {
 	if p.Y < 0 || p.Y >= d.Bounds.Height {
 		log.Panicf("invalid position %d,%d\n", p.X, p.Y)
 	}
@@ -138,21 +130,21 @@ func (d *Distances) validatePosition(p Position) {
 	}
 }
 
-func (d *Distances) SetDistance(p Position, distance int) {
-	d.validatePosition(p)
+func (d *Distances) SetDistance(p utilities.Point2D, distance int) {
+	d.validatePoint(p)
 
 	d.Rows[p.Y][p.X] = distance
 }
 
-func (d *Distances) GetDistance(p Position) int {
-	d.validatePosition(p)
+func (d *Distances) GetDistance(p utilities.Point2D) int {
+	d.validatePoint(p)
 
 	return d.Rows[p.Y][p.X]
 }
 
 type Grid struct {
-	StartPosition Position
-	Bounds        Size
+	StartPosition utilities.Point2D
+	Bounds        utilities.Size2D
 	Rows          []Row
 }
 
@@ -202,7 +194,7 @@ func ParseGrid(lines []string) *Grid {
 	// Now determine what pipe is at the starting location.  Find the two directions leading out of the start node.
 	exitDirections := make([]Direction, 0)
 
-	grid.ForEachNeighbor(grid.StartPosition, func(p Position, d Direction, t Tile) bool {
+	grid.ForEachNeighbor(grid.StartPosition, func(p utilities.Point2D, d Direction, t Tile) bool {
 		if CanTileExit(t, InvertDirection(d)) {
 			exitDirections = append(exitDirections, d)
 		}
@@ -221,48 +213,48 @@ func ParseGrid(lines []string) *Grid {
 	return grid
 }
 
-func (g *Grid) validatePosition(p Position) {
+func (g *Grid) validatePoint(p utilities.Point2D) {
 	if p.Y < 0 || p.Y >= g.Bounds.Height {
-		log.Panicf("invalid position %d,%d\n", p.X, p.Y)
+		log.Panicf("invalid point %d,%d\n", p.X, p.Y)
 	}
 	if p.X < 0 || p.X >= g.Bounds.Width {
-		log.Panicf("invalid position %d,%d\n", p.X, p.Y)
+		log.Panicf("invalid point %d,%d\n", p.X, p.Y)
 	}
 }
 
-func (g *Grid) ForEachNeighbor(p Position, callback func(p Position, d Direction, t Tile) bool) {
-	g.validatePosition(p)
+func (g *Grid) ForEachNeighbor(p utilities.Point2D, callback func(p utilities.Point2D, d Direction, t Tile) bool) {
+	g.validatePoint(p)
 
 	if p.Y > 0 {
 		// North
-		if !callback(Position{p.X, p.Y - 1}, North, g.GetTile(Position{p.X, p.Y - 1})) {
+		if !callback(utilities.NewPoint2D(p.X, p.Y-1), North, g.GetTile(utilities.NewPoint2D(p.X, p.Y-1))) {
 			return
 		}
 	}
 
 	if p.Y < g.Bounds.Height-1 {
 		// South
-		if !callback(Position{p.X, p.Y + 1}, South, g.GetTile(Position{p.X, p.Y + 1})) {
+		if !callback(utilities.NewPoint2D(p.X, p.Y+1), South, g.GetTile(utilities.NewPoint2D(p.X, p.Y+1))) {
 			return
 		}
 	}
 
 	if p.X < g.Bounds.Width-1 {
 		// East
-		if !callback(Position{p.X + 1, p.Y}, East, g.GetTile(Position{p.X + 1, p.Y})) {
+		if !callback(utilities.NewPoint2D(p.X+1, p.Y), East, g.GetTile(utilities.NewPoint2D(p.X+1, p.Y))) {
 			return
 		}
 	}
 
 	if p.X > 0 {
 		// West
-		if !callback(Position{p.X - 1, p.Y}, West, g.GetTile(Position{p.X - 1, p.Y})) {
+		if !callback(utilities.NewPoint2D(p.X-1, p.Y), West, g.GetTile(utilities.NewPoint2D(p.X-1, p.Y))) {
 			return
 		}
 	}
 }
 
-func (g *Grid) TraverseLoop(callback func(p Position, d Direction, t Tile) bool) {
+func (g *Grid) TraverseLoop(callback func(p utilities.Point2D, d Direction, t Tile) bool) {
 	currentPosition := g.StartPosition
 	currentTile := g.GetTile(currentPosition)
 	var currentDirection Direction
@@ -301,19 +293,19 @@ func (g *Grid) TraverseLoop(callback func(p Position, d Direction, t Tile) bool)
 	}
 }
 
-func (g *Grid) GetTile(p Position) Tile {
-	g.validatePosition(p)
+func (g *Grid) GetTile(p utilities.Point2D) Tile {
+	g.validatePoint(p)
 
 	return g.Rows[p.Y][p.X]
 }
 
-func (g *Grid) SetTile(p Position, t Tile) {
-	g.validatePosition(p)
+func (g *Grid) SetTile(p utilities.Point2D, t Tile) {
+	g.validatePoint(p)
 
 	g.Rows[p.Y][p.X] = t
 }
 
-func (g *Grid) GetNeighborTile(p Position, d Direction) Tile {
+func (g *Grid) GetNeighborTile(p utilities.Point2D, d Direction) Tile {
 	// Make sure we aren't going out of bounds.
 	switch d {
 	case North:
@@ -505,7 +497,7 @@ func CanTileExit(t Tile, d Direction) bool {
 	return false
 }
 
-func UpdatePosition(p Position, d Direction) Position {
+func UpdatePosition(p utilities.Point2D, d Direction) utilities.Point2D {
 	newPosition := p
 
 	switch d {
@@ -582,28 +574,6 @@ func CanConnect(t1 Tile, d Direction, t2 Tile) bool {
 	return false
 }
 
-func IsLeft(start Position, end Position, point Position) int {
-	val := (end.X-start.X)*(point.Y-start.Y) - (point.X-start.X)*(end.Y-start.Y)
-	return val
-}
-
-func PointInPolyCrossing(point Position, vertices []Position) bool {
-	crossing := 0
-
-	for i := 0; i < len(vertices)-1; i++ {
-		if (vertices[i].Y <= point.Y && vertices[i+1].Y > point.Y) ||
-			(vertices[i].Y > point.Y && vertices[i+1].Y <= point.Y) {
-			vt := (point.Y - vertices[i].Y) / (vertices[i+1].Y - vertices[i].Y)
-			if point.X < vertices[i].X+vt*(vertices[i+1].X-vertices[i].X) {
-				crossing++
-			}
-		}
-
-	}
-
-	return (crossing & 1) != 0
-}
-
 func day10(fileContents string) error {
 	// Part 1: Find the single giant loop starting at S. How many steps along the loop does it take
 	// to get from the starting position to the point farthest from the starting position?
@@ -612,7 +582,7 @@ func day10(fileContents string) error {
 	distances := NewDistances(grid.Bounds)
 	distance := 0
 
-	grid.TraverseLoop(func(p Position, d Direction, t Tile) bool {
+	grid.TraverseLoop(func(p utilities.Point2D, d Direction, t Tile) bool {
 		distances.SetDistance(p, distance)
 		distance++
 		return true
@@ -622,11 +592,11 @@ func day10(fileContents string) error {
 
 	// Part 2: Figure out whether you have time to search for the nest by calculating the area
 	// within the loop. How many tiles are enclosed by the loop?
-	vertices := make([]Position, 0)
+	vertices := make([]utilities.Point2D, 0)
 
 	visited := NewDistances(grid.Bounds)
 
-	grid.TraverseLoop(func(p Position, d Direction, t Tile) bool {
+	grid.TraverseLoop(func(p utilities.Point2D, d Direction, t Tile) bool {
 		visited.SetDistance(p, 10)
 		vertices = append(vertices, p)
 		return true
@@ -638,9 +608,9 @@ func day10(fileContents string) error {
 
 	for y := 0; y < visited.Bounds.Height; y++ {
 		for x := 0; x < visited.Bounds.Width; x++ {
-			d := visited.GetDistance(Position{x, y})
+			d := visited.GetDistance(utilities.NewPoint2D(x, y))
 			if d < 0 {
-				if PointInPolyCrossing(Position{x, y}, vertices) {
+				if utilities.PointInPolyCrossing(utilities.NewPoint2D(x, y), vertices) {
 					area++
 				}
 			}
