@@ -1,134 +1,289 @@
 package day11
 
 import (
-	"math/big"
+	"strings"
 	"testing"
 
+	"github.com/d1r7y/advent_2023/utilities"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewItem(t *testing.T) {
-	item := NewItem(5)
+func TestParseUniverse(t *testing.T) {
+	content := `
+...#......
+.......#..
+#.........
+..........
+......#...
+.#........
+.........#
+..........
+.......#..
+#...#.....`
 
-	assert.Equal(t, big.NewInt(int64(5)), item.WorryLevel)
+	universe := ParseUniverse(strings.Split(strings.TrimSpace(content), "\n"))
+	assert.Equal(t, &Universe{
+		Bounds: utilities.NewSize2D(10, 10),
+		Galaxies: []utilities.Point2D{
+			utilities.NewPoint2D(3, 0),
+			utilities.NewPoint2D(7, 1),
+			utilities.NewPoint2D(0, 2),
+			utilities.NewPoint2D(6, 4),
+			utilities.NewPoint2D(1, 5),
+			utilities.NewPoint2D(9, 6),
+			utilities.NewPoint2D(7, 8),
+			utilities.NewPoint2D(0, 9),
+			utilities.NewPoint2D(4, 9),
+		}}, universe)
 }
 
-func TestParseItemList(t *testing.T) {
+func TestUniverseUnpopulatedRows(t *testing.T) {
+	content := `
+...#......
+.......#..
+#.........
+..........
+......#...
+.#........
+.........#
+..........
+.......#..
+#...#.....`
+
+	universe := ParseUniverse(strings.Split(strings.TrimSpace(content), "\n"))
+
+	assert.Equal(t, []int{3, 7}, universe.UnpopulatedRows())
+}
+
+func TestUniverseUnpopulatedColumns(t *testing.T) {
+	content := `
+...#......
+.......#..
+#.........
+..........
+......#...
+.#........
+.........#
+..........
+.......#..
+#...#.....`
+
+	universe := ParseUniverse(strings.Split(strings.TrimSpace(content), "\n"))
+
+	assert.Equal(t, []int{2, 5, 8}, universe.UnpopulatedColumns())
+}
+
+func TestUniverseDescribe(t *testing.T) {
+	content := `
+...#......
+.......#..
+#.........
+..........
+......#...
+.#........
+.........#
+..........
+.......#..
+#...#.....`
+
+	universe := ParseUniverse(strings.Split(strings.TrimSpace(content), "\n"))
+	assert.Equal(t, strings.TrimSpace(content), universe.Describe())
+}
+
+func TestUniverseExpand(t *testing.T) {
+	content := `
+...#......
+.......#..
+#.........
+..........
+......#...
+.#........
+.........#
+..........
+.......#..
+#...#.....`
+
+	universe := ParseUniverse(strings.Split(strings.TrimSpace(content), "\n"))
+	universe.Expand(2)
+
+	assert.Equal(t, utilities.NewSize2D(13, 12), universe.Bounds)
+
+	expectedContent := `
+....#........
+.........#...
+#............
+.............
+.............
+........#....
+.#...........
+............#
+.............
+.............
+.........#...
+#....#.......`
+
+	assert.Equal(t, strings.TrimSpace(expectedContent), universe.Describe())
+}
+
+func TestUniverseExpandOlder(t *testing.T) {
+	content := `
+...#......
+.......#..
+#.........
+..........
+......#...
+.#........
+.........#
+..........
+.......#..
+#...#.....`
+
+	universe := ParseUniverse(strings.Split(strings.TrimSpace(content), "\n"))
+	universe.Expand(3)
+
+	assert.Equal(t, utilities.NewSize2D(16, 14), universe.Bounds)
+
+	expectedContent := `
+.....#..........
+...........#....
+#...............
+................
+................
+................
+..........#.....
+.#..............
+...............#
+................
+................
+................
+...........#....
+#.....#.........`
+
+	assert.Equal(t, strings.TrimSpace(expectedContent), universe.Describe())
+}
+
+func TestGetPartners(t *testing.T) {
 	type testCase struct {
-		str           string
-		expectedErr   bool
-		expectedItems []Item
+		id               int
+		expectedPartners []int
 	}
 
 	testCases := []testCase{
-		{"", true, []Item{}},
-		{"  Starting items: 79, 98", false, []Item{NewItem(79), NewItem(98)}},
-		{"  Starting items: 74", false, []Item{NewItem(74)}},
+		{0, []int{}},
+		{1, []int{0}},
+		{2, []int{0, 1}},
+		{3, []int{0, 1, 2}},
+		{4, []int{0, 1, 2, 3}},
+		{5, []int{0, 1, 2, 3, 4}},
+		{6, []int{0, 1, 2, 3, 4, 5}},
+		{7, []int{0, 1, 2, 3, 4, 5, 6}},
+		{8, []int{0, 1, 2, 3, 4, 5, 6, 7}},
 	}
 
 	for _, test := range testCases {
-		items, err := ParseItemList(test.str)
-
-		if test.expectedErr {
-			assert.Error(t, err)
-		} else {
-			assert.NoError(t, err)
-			assert.Equal(t, test.expectedItems, items)
-		}
+		assert.Equal(t, test.expectedPartners, GetPartners(test.id))
 	}
 }
 
-func TestParseTest(t *testing.T) {
+func TestUniverseGalaxyDistance(t *testing.T) {
+	content := `
+...#......
+.......#..
+#.........
+..........
+......#...
+.#........
+.........#
+..........
+.......#..
+#...#.....`
+
 	type testCase struct {
-		str            string
-		expectedErr    bool
-		item           Item
-		expectedResult bool
+		id1              int
+		id2              int
+		expectedDistance int
 	}
 
 	testCases := []testCase{
-		{"", true, NewItem(0), false},
-		{"  Test: divisible by xxz", true, NewItem(0), false},
-		{"  Tests: divisible by 100", true, NewItem(0), false},
-		{"  Test: multiply by 100", true, NewItem(0), false},
-		{"  Test: divisible by 23", false, NewItem(23), true},
-		{"  Test: divisible by 23", false, NewItem(22), false},
+		{4, 8, 9},
+		{0, 6, 15},
+		{2, 5, 17},
+		{7, 8, 5},
 	}
 
-	for _, test := range testCases {
-		testFunction, err := ParseTest(test.str)
+	universe := ParseUniverse(strings.Split(strings.TrimSpace(content), "\n"))
+	universe.Expand(2)
 
-		if test.expectedErr {
-			assert.Error(t, err)
-		} else {
-			assert.NoError(t, err)
-			assert.Equal(t, test.expectedResult, testFunction(test.item))
-		}
+	for _, test := range testCases {
+		// Make sure the distance is the same from id1->id2 as well as id2->id1.
+		assert.Equal(t, test.expectedDistance, universe.GalaxyDistance(test.id1, test.id2))
+		assert.Equal(t, test.expectedDistance, universe.GalaxyDistance(test.id2, test.id1))
 	}
 }
 
-func TestParseTestResult(t *testing.T) {
-	type testCase struct {
-		str              string
-		evaluator        string
-		expectedErr      bool
-		expectedMonkeyID int
-	}
+func TestSumGalaxyDistances(t *testing.T) {
+	content := `
+...#......
+.......#..
+#.........
+..........
+......#...
+.#........
+.........#
+..........
+.......#..
+#...#.....`
 
-	testCases := []testCase{
-		{"", "true", true, 0},
-		{"    If zztrue: throw to monkey 2", "true", true, 0},
-		{"    If true: throw to monkey bb", "true", true, 0},
-		{"    If true: throw to hyena 2", "true", true, 0},
-		{"    If true: throw to monkey 2", "true", false, 2},
-		{"    If true: throw to monkey 5", "true", false, 5},
-		{"", "false", true, 0},
-		{"    If zzfalse: throw to monkey 2", "false", true, 0},
-		{"    If false: throw to monkey bb", "false", true, 0},
-		{"    If false: throw to hyena 2", "false", true, 0},
-		{"    If false: throw to monkey 2", "false", false, 2},
-		{"    If false: throw to monkey 5", "false", false, 5},
-	}
+	universe := ParseUniverse(strings.Split(strings.TrimSpace(content), "\n"))
+	universe.Expand(2)
 
-	for _, test := range testCases {
-		monkeyID, err := ParseTestResult(test.str, test.evaluator)
+	sumGalaxyDistances := 0
 
-		if test.expectedErr {
-			assert.Error(t, err)
-		} else {
-			assert.NoError(t, err)
-			assert.Equal(t, test.expectedMonkeyID, monkeyID)
+	for id := 0; id < universe.GetNumGalaxies(); id++ {
+		for _, p := range GetPartners(id) {
+			sumGalaxyDistances += universe.GalaxyDistance(id, p)
 		}
 	}
+
+	assert.Equal(t, 374, sumGalaxyDistances)
 }
 
-func TestParseOperation(t *testing.T) {
+func TestSumGalaxyDistancesOlder(t *testing.T) {
+	content := `
+...#......
+.......#..
+#.........
+..........
+......#...
+.#........
+.........#
+..........
+.......#..
+#...#.....`
+
 	type testCase struct {
-		str          string
-		expectedErr  bool
-		item         Item
-		expectedItem Item
+		expansion                  int
+		expectedsumGalaxyDistances int
 	}
 
 	testCases := []testCase{
-		{"", true, NewItem(0), NewItem(0)},
-		{"  Operation: new = old ? 19", true, NewItem(0), NewItem(0)},
-		{"  Operation: new = old + bunko", true, NewItem(0), NewItem(0)},
-		{"  Operation: new = old * 19", false, NewItem(10), NewItem(190)},
-		{"  Operation: new = old + 6", false, NewItem(10), NewItem(16)},
-		{"  Operation: new = old - 5", false, NewItem(10), NewItem(5)},
-		{"  Operation: new = old / old", false, NewItem(10), NewItem(1)},
-		{"  Operation: new = old / 2", false, NewItem(10), NewItem(5)},
+		{2, 374},
+		{10, 1030},
+		{100, 8410},
 	}
 
 	for _, test := range testCases {
-		operation, err := ParseOperation(test.str)
+		universe := ParseUniverse(strings.Split(strings.TrimSpace(content), "\n"))
+		universe.Expand(test.expansion)
 
-		if test.expectedErr {
-			assert.Error(t, err)
-		} else {
-			assert.NoError(t, err)
-			assert.Equal(t, test.expectedItem, operation(test.item))
+		sumGalaxyDistances := 0
+
+		for id := 0; id < universe.GetNumGalaxies(); id++ {
+			for _, p := range GetPartners(id) {
+				sumGalaxyDistances += universe.GalaxyDistance(id, p)
+			}
 		}
+
+		assert.Equal(t, test.expectedsumGalaxyDistances, sumGalaxyDistances)
 	}
 }
