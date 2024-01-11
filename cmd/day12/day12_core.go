@@ -232,43 +232,45 @@ func generateAlternativesCore(alternatives []SpringStateList, states SpringState
 		// }
 	}
 
-	if offset == len(states) {
-		// We've reached the end.  No more states to mutate.
-		alternatives = append(alternatives, states)
+	for {
+		if offset == len(states) {
+			// We've reached the end.  No more states to mutate.
+			alternatives = append(alternatives, states)
 
-		return alternatives
-	}
-
-	if states[offset] == Unknown {
-		if (reject[offset] & RejectBrokenState) == 0 {
-			// Generate Broken alternative.
-			mutateBroken := createAlternate(states, offset, Broken)
-
-			// Before going down this path, sanity check that mutateBroken is valid.  If it
-			// isn't, then any further mutations won't be valid.
-			if invalidAlternate(mutateBroken, requirements) {
-				updateRejectList(RejectBrokenState, reject, offset, unfold)
-			} else {
-				alternatives = generateAlternativesCore(alternatives, mutateBroken, offset+1, requirements, unfold, reject)
-			}
+			return alternatives
 		}
 
-		if (reject[offset] & RejectOperationalState) == 0 {
-			// Generate Operational alternative.
-			mutateOperational := createAlternate(states, offset, Operational)
+		if states[offset] == Unknown {
+			if (reject[offset] & RejectBrokenState) == 0 {
+				// Generate Broken alternative.
+				mutateBroken := createAlternate(states, offset, Broken)
 
-			// Before going down this path, sanity check that mutateOperational is valid.  If it
-			// isn't, then any further mutations won't be valid.
-			if invalidAlternate(mutateOperational, requirements) {
-				updateRejectList(RejectOperationalState, reject, offset, unfold)
-			} else {
-				alternatives = generateAlternativesCore(alternatives, mutateOperational, offset+1, requirements, unfold, reject)
+				// Before going down this path, sanity check that mutateBroken is valid.  If it
+				// isn't, then any further mutations won't be valid.
+				if invalidAlternate(mutateBroken, requirements) {
+					updateRejectList(RejectBrokenState, reject, offset, unfold)
+				} else {
+					alternatives = generateAlternativesCore(alternatives, mutateBroken, offset+1, requirements, unfold, reject)
+				}
 			}
-		}
 
-	} else {
-		// Nothing to mutate at this state, pass the remainder on.
-		alternatives = generateAlternativesCore(alternatives, states, offset+1, requirements, unfold, reject)
+			if (reject[offset] & RejectOperationalState) == 0 {
+				// Generate Operational alternative.
+				mutateOperational := createAlternate(states, offset, Operational)
+
+				// Before going down this path, sanity check that mutateOperational is valid.  If it
+				// isn't, then any further mutations won't be valid.
+				if invalidAlternate(mutateOperational, requirements) {
+					updateRejectList(RejectOperationalState, reject, offset, unfold)
+				} else {
+					alternatives = generateAlternativesCore(alternatives, mutateOperational, offset+1, requirements, unfold, reject)
+				}
+			}
+			break
+		} else {
+			// Nothing to mutate at this state, move on.
+			offset++
+		}
 	}
 
 	return alternatives
