@@ -3,356 +3,350 @@ package day12
 import (
 	"fmt"
 	"log"
-	"math"
-	"sort"
+	"strconv"
 	"strings"
 )
 
-type Direction byte
+type SpringState byte
 
 const (
-	Up Direction = iota
-	Down
-	Left
-	Right
+	Operational SpringState = iota
+	Broken
+	Unknown
 )
 
-func getDirectionString(d Direction) string {
-	directionMap := map[Direction]string{
-		Up:    "Up",
-		Down:  "Down",
-		Left:  "Left",
-		Right: "Right",
+func (ss SpringState) Describe() string {
+	switch ss {
+	case Operational:
+		return "."
+	case Broken:
+		return "#"
+	case Unknown:
+		return "?"
 	}
 
-	return directionMap[d]
+	log.Panicf("unknown spring state: %d\n", ss)
+	return "#"
 }
 
-type Columns []int
+type RejectState byte
 
-func NewColumns() Columns {
-	return make(Columns, 0)
+const (
+	NoReject RejectState = iota
+	RejectOperationalState
+	RejectBrokenState
+)
+
+type RejectStateList []RejectState
+
+type SpringStateList []SpringState
+
+func (ssl SpringStateList) Describe() string {
+	str := ""
+
+	for _, s := range ssl {
+		str += s.Describe()
+	}
+
+	return str
 }
 
-type Position struct {
-	X int
-	Y int
+type SpringGroup struct {
+	Unfolded          int
+	States            SpringStateList
+	DamagedSpringRuns []int
 }
 
-type Size struct {
-	W int
-	H int
+func NewSpringGroup(unfolded int, states SpringStateList, damagedSpringRun []int) *SpringGroup {
+	group := &SpringGroup{}
+
+	group.Unfolded = unfolded
+
+	group.States = make(SpringStateList, len(states))
+	copy(group.States, states)
+
+	group.DamagedSpringRuns = make([]int, len(damagedSpringRun))
+	copy(group.DamagedSpringRuns, damagedSpringRun)
+
+	return group
 }
 
-type World struct {
-	Start      Position
-	End        Position
-	Dimensions Size
-	Rows       []Columns
+func (sg *SpringGroup) Describe() string {
+	str := ""
+	for _, state := range sg.States {
+		str += state.Describe()
+	}
+
+	str += " "
+
+	damagedRunStringsList := make([]string, 0)
+
+	for _, dr := range sg.DamagedSpringRuns {
+		damagedRunStringsList = append(damagedRunStringsList, fmt.Sprintf("%d", dr))
+	}
+
+	str += strings.Join(damagedRunStringsList, ",")
+
+	return str
 }
 
-func NewWorld() *World {
-	return &World{Rows: make([]Columns, 0)}
-}
+func (sg *SpringGroup) Solve() []*SpringGroup {
+	solutions := make([]*SpringGroup, 0)
 
-func (w *World) GetDimensions() Size {
-	return w.Dimensions
-}
-
-func (w *World) GetPositionHeight(p Position) int {
-	return w.Rows[p.Y][p.X]
-}
-
-func (w *World) GetAllPositionsAtHeight(height int) []Position {
-	positions := make([]Position, 0)
-
-	for i := range w.Rows {
-		for j, h := range w.Rows[i] {
-			if height == h {
-				positions = append(positions, Position{X: j, Y: i})
-			}
+	// Get all the solutions given states
+	for _, alternative := range GenerateAlternatives(sg.States, sg.DamagedSpringRuns, sg.Unfolded) {
+		if !IsAlternativeValid(alternative, sg.DamagedSpringRuns) {
+			continue
 		}
+
+		// Yes!  Add it to our list.
+		group := NewSpringGroup(1, alternative, sg.DamagedSpringRuns)
+		solutions = append(solutions, group)
 	}
 
-	return positions
+	return solutions
 }
 
-type SolutionState struct {
-	World    *World
-	Position Position
-	Visited  []bool
-	Moves    []Direction
-}
+func IsAlternativeValid(states SpringStateList, requirements []int) bool {
+	simplified := SimplifySpringStateRun(states, Broken)
 
-func NewSolutionState(world *World) *SolutionState {
-	dimensions := world.GetDimensions()
-	visited := make([]bool, dimensions.H*dimensions.W)
-
-	return &SolutionState{World: world, Visited: visited, Moves: make([]Direction, 0)}
-}
-
-func (s *SolutionState) SetPosition(p Position) {
-	s.Position = p
-
-	// Mark new position as visited.
-	dimensions := s.World.GetDimensions()
-	s.Visited[p.Y*dimensions.W+p.X] = true
-}
-
-func (s *SolutionState) MoveDescription() string {
-	description := ""
-
-	for _, d := range s.Moves {
-		description += getDirectionString(d) + " "
-	}
-
-	return description
-}
-
-func (s *SolutionState) AtEnd() bool {
-	return s.Position == s.World.End
-}
-
-func (s *SolutionState) WasPositionVisited(proposed Direction) bool {
-	dimensions := s.World.GetDimensions()
-
-	proposedPosition := s.Position
-
-	switch proposed {
-	case Up:
-		proposedPosition.Y--
-	case Left:
-		proposedPosition.X--
-	case Right:
-		proposedPosition.X++
-	case Down:
-		proposedPosition.Y++
-	}
-
-	// Make sure we don't exceed the bounds of the world.
-	if proposedPosition.X < 0 || proposedPosition.X == dimensions.W {
+	// Now see if this alternative matches our damaged spring run requirements.
+	if len(simplified) != len(requirements) {
 		return false
 	}
 
-	if proposedPosition.Y < 0 || proposedPosition.Y == dimensions.H {
-		return false
-	}
-
-	return s.Visited[proposedPosition.Y*dimensions.W+proposedPosition.X]
-}
-
-func (s *SolutionState) IsMoveLegal(proposed Direction) bool {
-	// Have we already visited this position?
-	if s.WasPositionVisited(proposed) {
-		return false
-	}
-
-	// Next, check the proposed direction and the current position against the bounds of the world.
-	if s.DoesMoveExceedBounds(proposed) {
-		return false
-	}
-
-	// Now see if this would backtrack.
-	if s.DoesMoveBacktrack(proposed) {
-		return false
-	}
-
-	// Now check if the height of the proposed destination position is not too high.
-	if s.IsProposedDestinationHeightInvalid(proposed) {
-		return false
+	for i := 0; i < len(requirements); i++ {
+		if simplified[i] != requirements[i] {
+			return false
+		}
 	}
 
 	return true
 }
 
-func (s *SolutionState) GetLegalMoves() []Direction {
-	moves := make([]Direction, 0)
+func (sg *SpringGroup) StateCount(InterestedState SpringState) int {
+	count := 0
 
-	candidates := []Direction{Up, Down, Left, Right}
-
-	for _, c := range candidates {
-		if s.IsMoveLegal(c) {
-			moves = append(moves, c)
+	for _, state := range sg.States {
+		if state == InterestedState {
+			count++
 		}
 	}
 
-	return moves
+	return count
 }
 
-func (s *SolutionState) DoesMoveExceedBounds(proposed Direction) bool {
-	dimensions := s.World.GetDimensions()
-	switch proposed {
-	case Up:
-		return s.Position.Y == 0
-	case Down:
-		return s.Position.Y == dimensions.H-1
-	case Left:
-		return s.Position.X == 0
-	case Right:
-		return s.Position.X == dimensions.W-1
+func (sg *SpringGroup) Unfold(factor int) *SpringGroup {
+	unfoldedStates := make(SpringStateList, 0)
+
+	for i := 0; i < factor; i++ {
+		unfoldedStates = append(unfoldedStates, sg.States...)
+
+		if i < factor-1 {
+			unfoldedStates = append(unfoldedStates, Unknown)
+		}
 	}
 
-	log.Panic("Invalid previous direction")
-	return false
+	unfoldedDamagedSpringRuns := make([]int, 0)
+
+	for i := 0; i < factor; i++ {
+		unfoldedDamagedSpringRuns = append(unfoldedDamagedSpringRuns, sg.DamagedSpringRuns...)
+	}
+
+	return NewSpringGroup(factor, unfoldedStates, unfoldedDamagedSpringRuns)
 }
 
-func (s *SolutionState) DoesMoveBacktrack(proposed Direction) bool {
-	if len(s.Moves) == 0 {
+func SimplifySpringStateRun(states SpringStateList, interestedState SpringState) []int {
+	simplified := make([]int, 0)
+
+	runCount := 0
+
+	for _, s := range states {
+		if s == Unknown {
+			break
+		}
+
+		if s != interestedState {
+			if runCount > 0 {
+				simplified = append(simplified, runCount)
+			}
+			runCount = 0
+		} else {
+			runCount++
+		}
+	}
+
+	if runCount > 0 {
+		simplified = append(simplified, runCount)
+	}
+
+	return simplified
+}
+
+func generateAlternativesCore(alternatives []SpringStateList, states SpringStateList, offset int, requirements []int, unfold int, reject RejectStateList) []SpringStateList {
+
+	createAlternate := func(states SpringStateList, offset int, newState SpringState) SpringStateList {
+		alternateState := make(SpringStateList, len(states))
+		copy(alternateState, states)
+		alternateState[offset] = newState
+
+		return alternateState
+	}
+
+	invalidAlternate := func(states SpringStateList, requirements []int) bool {
+		simplified := SimplifySpringStateRun(states, Broken)
+
+		// len(simplified) <= len(requirements) is possibly valid.
+		// len(simplified) > len(requirements) is definitely NOT valid.
+		if len(simplified) > len(requirements) {
+			return true
+		}
+
+		// Except for the last one, each run in simplified must be equal to the
+		// corresponding run in requirements.  The last one can be less as there
+		// might be unmutated unknowns.
+		for i := 0; i < len(simplified); i++ {
+			sr := simplified[i]
+			rr := requirements[i]
+
+			if i < len(simplified)-1 {
+				// Not last run, so they must be equal.
+				if sr != rr {
+					return true
+				}
+			} else {
+				// Last run, sr can be less than or equal to rr.
+				if sr > rr {
+					return true
+				}
+			}
+		}
+
 		return false
 	}
 
-	previous := s.Moves[len(s.Moves)-1]
-	switch previous {
-	case Up:
-		return proposed == Down
-	case Left:
-		return proposed == Right
-	case Right:
-		return proposed == Left
-	case Down:
-		return proposed == Up
+	updateRejectList := func(rejectState RejectState, reject RejectStateList, offset int, unfold int) {
+		// nextOffset := ((len(reject) - (unfold - 1)) / unfold) + 1
+		// for i := offset + nextOffset; i < len(reject); i += nextOffset {
+		// 	reject[i] |= rejectState
+		// }
 	}
 
-	log.Panic("Invalid previous direction")
-	return false
-}
+	if offset == len(states) {
+		// We've reached the end.  No more states to mutate.
+		alternatives = append(alternatives, states)
 
-func (s *SolutionState) IsProposedDestinationHeightInvalid(proposed Direction) bool {
-	proposedPosition := s.Position
-
-	switch proposed {
-	case Up:
-		proposedPosition.Y--
-	case Left:
-		proposedPosition.X--
-	case Right:
-		proposedPosition.X++
-	case Down:
-		proposedPosition.Y++
+		return alternatives
 	}
 
-	currentHeight := s.World.GetPositionHeight(s.Position)
-	proposedHeight := s.World.GetPositionHeight(proposedPosition)
+	if states[offset] == Unknown {
+		if (reject[offset] & RejectBrokenState) == 0 {
+			// Generate Broken alternative.
+			mutateBroken := createAlternate(states, offset, Broken)
 
-	return proposedHeight > currentHeight+1
-}
-
-func (s *SolutionState) Move(d Direction) *SolutionState {
-	p := s.Position
-
-	switch d {
-	case Up:
-		p.Y--
-	case Left:
-		p.X--
-	case Right:
-		p.X++
-	case Down:
-		p.Y++
-	}
-
-	ns := NewSolutionState(s.World)
-	ns.Moves = make([]Direction, len(s.Moves))
-	copy(ns.Moves, s.Moves)
-
-	// This bit is a little tricky: we're sharing the Visited slice across all SolutionState copies.
-	ns.Visited = s.Visited
-
-	ns.Moves = append(ns.Moves, d)
-	ns.SetPosition(p)
-
-	return ns
-}
-
-func ParseWorld(fileContents string) *World {
-	world := NewWorld()
-
-	for row, line := range strings.Split(fileContents, "\n") {
-		if line == "" {
-			continue
-		}
-
-		columns := NewColumns()
-		world.Dimensions.W = 0
-
-		for column, c := range line {
-			if c == 'S' {
-				world.Start.X = column
-				world.Start.Y = row
-
-				// The start is at the lowest elevation 'a'
-				columns = append(columns, int('a')-'a')
-			} else if c == 'E' {
-				world.End.X = column
-				world.End.Y = row
-
-				// The destination is at the highest elevation 'z'
-				columns = append(columns, int('z')-'a')
+			// Before going down this path, sanity check that mutateBroken is valid.  If it
+			// isn't, then any further mutations won't be valid.
+			if invalidAlternate(mutateBroken, requirements) {
+				updateRejectList(RejectBrokenState, reject, offset, unfold)
 			} else {
-				if c < 'a' || c > 'z' {
-					log.Fatal(fmt.Errorf("unknown character '%c' at %d,%d", c, column, row))
-				}
-				columns = append(columns, int(c)-'a')
+				alternatives = generateAlternativesCore(alternatives, mutateBroken, offset+1, requirements, unfold, reject)
 			}
-			world.Dimensions.W++
 		}
 
-		if len(columns) > 0 {
-			world.Rows = append(world.Rows, columns)
-			world.Dimensions.H++
+		if (reject[offset] & RejectOperationalState) == 0 {
+			// Generate Operational alternative.
+			mutateOperational := createAlternate(states, offset, Operational)
+
+			// Before going down this path, sanity check that mutateOperational is valid.  If it
+			// isn't, then any further mutations won't be valid.
+			if invalidAlternate(mutateOperational, requirements) {
+				updateRejectList(RejectOperationalState, reject, offset, unfold)
+			} else {
+				alternatives = generateAlternativesCore(alternatives, mutateOperational, offset+1, requirements, unfold, reject)
+			}
+		}
+
+	} else {
+		// Nothing to mutate at this state, pass the remainder on.
+		alternatives = generateAlternativesCore(alternatives, states, offset+1, requirements, unfold, reject)
+	}
+
+	return alternatives
+}
+
+func GenerateAlternatives(states SpringStateList, requirements []int, unfold int) []SpringStateList {
+	alternatives := make([]SpringStateList, 0)
+	reject := make(RejectStateList, len(states))
+	for i := 0; i < len(reject); i++ {
+		reject[i] = NoReject
+	}
+
+	return generateAlternativesCore(alternatives, states, 0, requirements, unfold, reject)
+}
+
+func ParseLine(line string) *SpringGroup {
+	conditionAndList := strings.Split(line, " ")
+
+	if len(conditionAndList) != 2 {
+		log.Panicf("unexpected line '%s'\n", line)
+	}
+
+	states := make(SpringStateList, 0)
+	damagedSpringRuns := make([]int, 0)
+
+	for _, s := range conditionAndList[0] {
+		switch s {
+		case '.':
+			states = append(states, Operational)
+		case '#':
+			states = append(states, Broken)
+		case '?':
+			states = append(states, Unknown)
+		default:
+			log.Panicf("unexpected spring state: %d\n", s)
 		}
 	}
 
-	return world
-}
-
-func FindMinimumMovement(world *World) int {
-	return FindMinimumMovementFromPosition(world, world.Start)
-}
-
-func FindMinimumMovementFromPosition(world *World, p Position) int {
-	solutionState := NewSolutionState(world)
-	solutionState.SetPosition(p)
-
-	candidates := make([]*SolutionState, 0)
-	candidates = append(candidates, solutionState)
-
-	for i := 0; i < len(candidates); i++ {
-		s := candidates[i]
-
-		if s.AtEnd() {
-			return len(s.Moves)
+	for _, n := range strings.Split(conditionAndList[1], ",") {
+		number, err := strconv.Atoi(n)
+		if err != nil {
+			log.Panic(err)
 		}
 
-		for _, m := range s.GetLegalMoves() {
-			candidates = append(candidates, s.Move(m))
-		}
+		damagedSpringRuns = append(damagedSpringRuns, number)
 	}
 
-	return math.MaxInt
+	group := NewSpringGroup(1, states, damagedSpringRuns)
+	return group
 }
 
 func day12(fileContents string) error {
-	// Part 1: What is the fewest number of steps to go from the starting position to the
-	// ending position.
-	world := ParseWorld(fileContents)
+	// Part 1: For each row, count all of the different arrangements of operational and broken
+	// springs that meet the given criteria. What is the sum of those counts?
 
-	fmt.Printf("Minimum moves %d\n", FindMinimumMovement(world))
+	totalArrangements := 0
 
-	// Part 2: Let's plan a more scenic route to the destination.  What is the fewest steps
-	// required to move starting from any square with elevation a to the location that should
-	// get the best signal?
+	for _, line := range strings.Split(strings.TrimSpace(fileContents), "\n") {
+		springGroup := ParseLine(line)
 
-	movesCount := make([]int, 0)
-
-	for _, p := range world.GetAllPositionsAtHeight(int('a') - 'a') {
-		moves := FindMinimumMovementFromPosition(world, p)
-		movesCount = append(movesCount, moves)
+		totalArrangements += len(springGroup.Solve())
 	}
 
-	sort.Ints(movesCount)
+	log.Printf("Sum of possible arrangements: %d\n", totalArrangements)
 
-	fmt.Printf("Minimum moves from scenic positions %d\n", movesCount[0])
+	// Part 2: Unfold your condition records; what is the new sum of possible arrangement counts?
+
+	totalUnfoldedArrangements := 0
+
+	for _, line := range strings.Split(strings.TrimSpace(fileContents), "\n") {
+		springGroup := ParseLine(line)
+		unfolded := springGroup.Unfold(5)
+		log.Println(unfolded.Describe())
+
+		totalUnfoldedArrangements += len(unfolded.Solve())
+	}
+
+	log.Printf("Sum of unfolded possible arrangements: %d\n", totalUnfoldedArrangements)
 
 	return nil
 }

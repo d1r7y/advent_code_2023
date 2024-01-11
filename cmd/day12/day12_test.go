@@ -6,337 +6,152 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseWorld(t *testing.T) {
+func TestParseLine(t *testing.T) {
 	type testCase struct {
-		str           string
-		expectedWorld *World
+		line          string
+		expectedGroup *SpringGroup
 	}
 	testCases := []testCase{
 		{
-			str: `Sabc
-hijk
-lmno
-pqrE
-`,
-			expectedWorld: &World{
-				Start:      Position{0, 0},
-				End:        Position{3, 3},
-				Dimensions: Size{4, 4},
-				Rows: []Columns{
-					{0, 0, 1, 2},
-					{7, 8, 9, 10},
-					{11, 12, 13, 14},
-					{15, 16, 17, 25},
-				},
+			line: "#.#.### 1,1,3",
+			expectedGroup: &SpringGroup{
+				Unfolded:          1,
+				States:            []SpringState{Broken, Operational, Broken, Operational, Broken, Broken, Broken},
+				DamagedSpringRuns: []int{1, 1, 3},
+			},
+		},
+		{
+			line: ".#...#....###. 1,1,3",
+			expectedGroup: &SpringGroup{
+				Unfolded:          1,
+				States:            []SpringState{Operational, Broken, Operational, Operational, Operational, Broken, Operational, Operational, Operational, Operational, Broken, Broken, Broken, Operational},
+				DamagedSpringRuns: []int{1, 1, 3},
+			},
+		},
+		{
+			line: "???.### 1,1,3",
+			expectedGroup: &SpringGroup{
+				Unfolded:          1,
+				States:            []SpringState{Unknown, Unknown, Unknown, Operational, Broken, Broken, Broken},
+				DamagedSpringRuns: []int{1, 1, 3},
+			},
+		},
+		{
+			line: "?###???????? 3,2,1",
+			expectedGroup: &SpringGroup{
+				Unfolded:          1,
+				States:            []SpringState{Unknown, Broken, Broken, Broken, Unknown, Unknown, Unknown, Unknown, Unknown, Unknown, Unknown, Unknown},
+				DamagedSpringRuns: []int{3, 2, 1},
 			},
 		},
 	}
 
 	for _, test := range testCases {
-		w := ParseWorld(test.str)
-		assert.Equal(t, test.expectedWorld, w)
+		group := ParseLine(test.line)
+		assert.Equal(t, test.expectedGroup, group)
 	}
 }
 
-func TestDoesMoveBacktrack(t *testing.T) {
+func TestSimplifySpringStateRun(t *testing.T) {
 	type testCase struct {
-		previous       Direction
-		proposed       Direction
-		expectedResult bool
-	}
-
-	testCases := []testCase{
-		{Up, Up, false},
-		{Up, Right, false},
-		{Up, Left, false},
-		{Up, Down, true},
-
-		{Right, Right, false},
-		{Right, Up, false},
-		{Right, Left, true},
-		{Right, Down, false},
-
-		{Left, Left, false},
-		{Left, Up, false},
-		{Left, Right, true},
-		{Left, Down, false},
-
-		{Down, Down, false},
-		{Down, Up, true},
-		{Down, Right, false},
-		{Down, Left, false},
-	}
-
-	str := `Sabc
-hijk
-lmno
-pqrE
-`
-
-	for _, test := range testCases {
-		w := ParseWorld(str)
-
-		s := NewSolutionState(w)
-		s.Moves = append(s.Moves, test.previous)
-
-		assert.Equal(t, test.expectedResult, s.DoesMoveBacktrack(test.proposed))
-	}
-}
-
-func TestDoesMoveExceedBounds(t *testing.T) {
-	type testCase struct {
-		proposed       Direction
-		dimensions     Size
-		position       Position
-		expectedResult bool
-	}
-
-	testCases := []testCase{
-		{Up, Size{4, 4}, Position{0, 0}, true},
-		{Down, Size{4, 4}, Position{0, 0}, false},
-		{Left, Size{4, 4}, Position{0, 0}, true},
-		{Right, Size{4, 4}, Position{0, 0}, false},
-
-		{Up, Size{4, 4}, Position{1, 1}, false},
-		{Down, Size{4, 4}, Position{1, 1}, false},
-		{Left, Size{4, 4}, Position{1, 1}, false},
-		{Right, Size{4, 4}, Position{1, 1}, false},
-
-		{Up, Size{4, 4}, Position{3, 3}, false},
-		{Down, Size{4, 4}, Position{3, 3}, true},
-		{Left, Size{4, 4}, Position{3, 3}, false},
-		{Right, Size{4, 4}, Position{3, 3}, true},
-
-		{Up, Size{4, 4}, Position{3, 0}, true},
-		{Down, Size{4, 4}, Position{0, 3}, true},
-		{Left, Size{4, 4}, Position{0, 3}, true},
-		{Right, Size{4, 4}, Position{3, 0}, true},
-	}
-
-	for _, test := range testCases {
-		w := NewWorld()
-		w.Dimensions = test.dimensions
-
-		s := NewSolutionState(w)
-		s.SetPosition(test.position)
-
-		assert.Equal(t, test.expectedResult, s.DoesMoveExceedBounds(test.proposed))
-	}
-}
-
-func TestIsProposedDestinationHeightInvalid(t *testing.T) {
-	type testCase struct {
-		str            string
-		position       Position
-		proposed       Direction
-		expectedResult bool
+		state           SpringStateList
+		interestedState SpringState
+		expectedRun     []int
 	}
 	testCases := []testCase{
 		{
-			str: `Sabc
-hijk
-lmno
-pqrE
-`,
-			position:       Position{0, 0},
-			proposed:       Down,
-			expectedResult: true,
+			state:           SpringStateList{Broken, Operational, Broken, Operational, Broken, Broken, Broken},
+			interestedState: Broken,
+			expectedRun:     []int{1, 1, 3},
 		},
 		{
-			str: `Sabc
-hijk
-lmno
-pqrE
-`,
-			position:       Position{0, 0},
-			proposed:       Right,
-			expectedResult: false,
+			state:           SpringStateList{Operational, Broken, Operational, Operational, Operational, Broken, Operational, Operational, Operational, Operational, Broken, Broken, Broken, Operational},
+			interestedState: Broken,
+			expectedRun:     []int{1, 1, 3},
 		},
 		{
-			str: `Sabc
-hijk
-lmno
-pqrE
-`,
-			position:       Position{3, 3},
-			proposed:       Up,
-			expectedResult: false,
+			state:           SpringStateList{Broken, Broken, Broken, Operational, Broken, Broken, Broken},
+			interestedState: Broken,
+			expectedRun:     []int{3, 3},
 		},
 		{
-			str: `Sabc
-hijk
-lmnz
-pqrE
-`,
-			position:       Position{3, 3},
-			proposed:       Up,
-			expectedResult: false,
+			state:           SpringStateList{Operational, Broken, Broken, Broken, Operational, Operational, Operational, Broken, Broken, Operational, Operational, Operational, Operational, Broken, Operational, Operational, Operational, Operational, Operational},
+			interestedState: Operational,
+			expectedRun:     []int{1, 3, 4, 5},
 		},
 	}
 
 	for _, test := range testCases {
-		w := ParseWorld(test.str)
-
-		s := NewSolutionState(w)
-		s.SetPosition(test.position)
-
-		assert.Equal(t, test.expectedResult, s.IsProposedDestinationHeightInvalid(test.proposed))
+		assert.Equal(t, test.expectedRun, SimplifySpringStateRun(test.state, test.interestedState))
 	}
+
 }
 
-func TestGetLegalMoves(t *testing.T) {
+func TestSpringGroupSolve(t *testing.T) {
 	type testCase struct {
-		str           string
-		position      Position
-		expectedMoves []Direction
+		line                 string
+		expectedAlternatives []*SpringGroup
 	}
 	testCases := []testCase{
 		{
-			str: `Sabc
-hijk
-lmno
-pqrE
-`,
-			position:      Position{0, 0},
-			expectedMoves: []Direction{Right},
+			line: "???.### 1,1,3",
+			expectedAlternatives: []*SpringGroup{
+				{Unfolded: 1, DamagedSpringRuns: []int{1, 1, 3}, States: SpringStateList{Broken, Operational, Broken, Operational, Broken, Broken, Broken}},
+			},
 		},
 		{
-			str: `Sabc
-hijk
-lmno
-pqrE
-`,
-			position:      Position{3, 3},
-			expectedMoves: []Direction{Up, Left},
-		},
-		{
-			str: `Sabc
-hijk
-lmno
-pqrE
-`,
-			position:      Position{2, 2},
-			expectedMoves: []Direction{Up, Left, Right},
-		},
-		{
-			str: `Sabc
-hijk
-lmzo
-pqrE
-`,
-			position:      Position{2, 2},
-			expectedMoves: []Direction{Up, Down, Left, Right},
+			line: ".??..??...?##. 1,1,3",
+			expectedAlternatives: []*SpringGroup{
+				{Unfolded: 1, DamagedSpringRuns: []int{1, 1, 3}, States: SpringStateList{Operational, Broken, Operational, Operational, Operational, Broken, Operational, Operational, Operational, Operational, Broken, Broken, Broken, Operational}},
+				{Unfolded: 1, DamagedSpringRuns: []int{1, 1, 3}, States: SpringStateList{Operational, Broken, Operational, Operational, Operational, Operational, Broken, Operational, Operational, Operational, Broken, Broken, Broken, Operational}},
+				{Unfolded: 1, DamagedSpringRuns: []int{1, 1, 3}, States: SpringStateList{Operational, Operational, Broken, Operational, Operational, Broken, Operational, Operational, Operational, Operational, Broken, Broken, Broken, Operational}},
+				{Unfolded: 1, DamagedSpringRuns: []int{1, 1, 3}, States: SpringStateList{Operational, Operational, Broken, Operational, Operational, Operational, Broken, Operational, Operational, Operational, Broken, Broken, Broken, Operational}},
+			},
 		},
 	}
 
 	for _, test := range testCases {
-		w := ParseWorld(test.str)
-
-		s := NewSolutionState(w)
-		s.SetPosition(test.position)
-
-		assert.Equal(t, test.expectedMoves, s.GetLegalMoves())
+		group := ParseLine(test.line)
+		assert.Equal(t, test.expectedAlternatives, group.Solve())
 	}
 }
 
-func TestWasPositionVisited(t *testing.T) {
+func TestSpringGroupSolveUnfolded(t *testing.T) {
+	line := "?###???????? 3,2,1"
+	group := ParseLine(line)
+	group.Unfold(5).Solve()
+}
+
+func TestSpringGroupSolveCount(t *testing.T) {
 	type testCase struct {
-		historicalPositions []Position
-		currentPosition     Position
-		direction           Direction
-		expectedResult      bool
+		line                      string
+		expectedAlternativesCount int
 	}
 	testCases := []testCase{
-		{
-			historicalPositions: []Position{{3, 3}, {3, 2}, {2, 2}, {2, 3}},
-			currentPosition:     Position{1, 2},
-			direction:           Right,
-			expectedResult:      true,
-		},
-		{
-			historicalPositions: []Position{{3, 3}, {3, 2}, {2, 2}, {2, 3}},
-			currentPosition:     Position{1, 1},
-			direction:           Right,
-			expectedResult:      false,
-		},
+		{line: "???.### 1,1,3", expectedAlternativesCount: 1},
+		{line: ".??..??...?##. 1,1,3", expectedAlternativesCount: 4},
+		{line: "?###???????? 3,2,1", expectedAlternativesCount: 10},
 	}
-
-	str := `Sabc
-hijk
-lmno
-pqrE
-`
 
 	for _, test := range testCases {
-		w := ParseWorld(str)
-
-		s := NewSolutionState(w)
-		for _, p := range test.historicalPositions {
-			s.SetPosition(p)
-		}
-
-		s.SetPosition(test.currentPosition)
-
-		assert.Equal(t, test.expectedResult, s.WasPositionVisited(test.direction))
+		group := ParseLine(test.line)
+		assert.Equal(t, test.expectedAlternativesCount, len(group.Solve()))
 	}
 }
 
-func TestFindMinimumMovement1(t *testing.T) {
-	str := `Sabqponm
-abcryxxl
-accszExk
-acctuvwj
-abdefghi`
+func TestSpringGroupUnfold(t *testing.T) {
+	type testCase struct {
+		line         string
+		expectedLine string
+	}
+	testCases := []testCase{
+		{line: ".# 1", expectedLine: ".#?.#?.#?.#?.# 1,1,1,1,1"},
+		{line: "???.### 1,1,3", expectedLine: "???.###????.###????.###????.###????.### 1,1,3,1,1,3,1,1,3,1,1,3,1,1,3"},
+	}
 
-	w := ParseWorld(str)
-
-	assert.Equal(t, 31, FindMinimumMovement(w))
-}
-
-func TestFindMinimumMovement2(t *testing.T) {
-	str := `abccccccccccccccccccaaaaaaaaacccccccccccccccccccccccccccccccccccccaaaa
-abcccccccccccccccaaaaaaaaaaacccccccccccccccccccccccccccccccccccccaaaaa
-abcaaccaacccccccccaaaaaaaaaacccccccccccccccccccccaaacccccccccccccaaaaa
-abcaaaaaaccccccccaaaaaaaaaaaaacccccccccccccccccccaacccccccccccccaaaaaa
-abcaaaaaacccaaacccccaaaaaaaaaaaccccccccccccccccccaaaccccccccccccccccaa
-abaaaaaaacccaaaaccccaaaaaacaaaacccccccccccaaaacjjjacccccccccccccccccca
-abaaaaaaaaccaaaaccccaaaaaaccccccaccccccccccaajjjjjkkcccccccccccccccccc
-abaaaaaaaaccaaacccccccaaaccccccaaccccccccccajjjjjjkkkaaacccaaaccaccccc
-abccaaacccccccccccccccaaccccaaaaaaaacccccccjjjjoookkkkaacccaaaaaaccccc
-abcccaacccccccccccccccccccccaaaaaaaaccccccjjjjoooookkkkcccccaaaaaccccc
-abcccccccaacccccccccccccccccccaaaacccccccijjjoooooookkkkccaaaaaaaccccc
-abccaaccaaaccccccccccccccccccaaaaacccccciijjooouuuoppkkkkkaaaaaaaacccc
-abccaaaaaaaccccccccccaaaaacccaacaaaccciiiiiooouuuuupppkkklllaaaaaacccc
-abccaaaaaacccccccccccaaaaacccacccaaciiiiiiqooouuuuuupppkllllllacaccccc
-abcccaaaaaaaacccccccaaaaaaccccaacaiiiiiqqqqoouuuxuuupppppplllllccccccc
-abccaaaaaaaaaccaaaccaaaaaaccccaaaaiiiiqqqqqqttuxxxuuuppppppplllccccccc
-abccaaaaaaaacccaaaaaaaaaaacccaaaahiiiqqqttttttuxxxxuuuvvpppplllccccccc
-abcaaaaaaacccaaaaaaaaaaacccccaaaahhhqqqqtttttttxxxxuuvvvvvqqlllccccccc
-abcccccaaaccaaaaaaaaaccccccccacaahhhqqqttttxxxxxxxyyyyyvvvqqlllccccccc
-abcccccaaaccaaaaaaaacccccccccccaahhhqqqtttxxxxxxxyyyyyyvvqqqlllccccccc
-SbcccccccccccaaaaaaaaaccccccccccchhhqqqtttxxxxEzzzyyyyvvvqqqmmlccccccc
-abcccccccccccaaaaaaaacccaacccccccchhhppptttxxxxyyyyyvvvvqqqmmmcccccccc
-abccccccccccaaaaaaaaaaccaacccccccchhhpppptttsxxyyyyyvvvqqqmmmccccccccc
-abcaacccccccaaaaaaacaaaaaaccccccccchhhppppsswwyyyyyyyvvqqmmmmccccccccc
-abaaaacccccccaccaaaccaaaaaaacccccccchhhpppsswwyywwyyyvvqqmmmddcccccccc
-abaaaaccccccccccaaaccaaaaaaacccccccchhhpppsswwwwwwwwwvvqqqmmdddccccccc
-abaaaacccccccccaaaccaaaaaaccccccccccgggpppsswwwwrrwwwwvrqqmmdddccccccc
-abccccccaaaaaccaaaacaaaaaaccccccaacccggpppssswwsrrrwwwvrrqmmdddacccccc
-abccccccaaaaaccaaaacccccaaccccaaaaaacggpppssssssrrrrrrrrrnmmdddaaccccc
-abcccccaaaaaaccaaaccccccccccccaaaaaacggppossssssoorrrrrrrnnmdddacccccc
-abcccccaaaaaaccccccccaaaaccccccaaaaacgggoooossoooonnnrrnnnnmddaaaacccc
-abccccccaaaaaccccccccaaaacccccaaaaaccgggoooooooooonnnnnnnnndddaaaacccc
-abccccccaaaccccccccccaaaacccccaaaaacccgggoooooooffennnnnnnedddaaaacccc
-abcccccccccccccccccccaaacccccccaacccccggggffffffffeeeeeeeeeedaaacccccc
-abccccccccccccccccccaaacccccaccaaccccccggfffffffffeeeeeeeeeecaaacccccc
-abccccccccccccccccccaaaacccaaaaaaaaaccccfffffffaaaaaeeeeeecccccccccccc
-abccccccccaacaaccccaaaaaacaaaaaaaaaaccccccccccaaaccaaaaccccccccccccccc
-abccccccccaaaaacccaaaaaaaaaaacaaaaccccccccccccaaaccccaaccccccccccaaaca
-abcccccccaaaaaccccaaaaaaaaaaacaaaaacccccccccccaaaccccccccccccccccaaaaa
-abcccccccaaaaaacccaaaaaaaaaacaaaaaacccccccccccaaccccccccccccccccccaaaa
-abcccccccccaaaaccaaaaaaaaaaaaaaccaaccccccccccccccccccccccccccccccaaaaa`
-
-	w := ParseWorld(str)
-
-	assert.Equal(t, 352, FindMinimumMovement(w))
+	for _, test := range testCases {
+		group := ParseLine(test.line)
+		unfoldedGroup := group.Unfold(5)
+		assert.Equal(t, test.expectedLine, unfoldedGroup.Describe())
+	}
 }
