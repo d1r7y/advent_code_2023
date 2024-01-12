@@ -2,246 +2,309 @@ package day13
 
 import (
 	"fmt"
-	"sort"
-	"strconv"
+	"log"
 	"strings"
+
+	"github.com/d1r7y/advent_2023/utilities"
 )
 
-type PacketElement struct {
-	line   string
-	Number bool
+type Terrain byte
 
-	Value int
-	List  PacketElementList
-}
-
-type PacketElementList []*PacketElement
-
-func (p PacketElementList) Len() int {
-	return len(p)
-}
-
-func (p PacketElementList) Less(i, j int) bool {
-	return ComparePacketElements(p[i].List, p[j].List) == CorrectOrder
-}
-
-func (p PacketElementList) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
-}
-
-func NewPacketElement() *PacketElement {
-	return &PacketElement{List: make(PacketElementList, 0)}
-}
-
-type Pair struct {
-	p1    *PacketElement
-	line1 string
-
-	p2    *PacketElement
-	line2 string
-}
-
-func ParseNumber(str string, characterIndex int) (int, int) {
-	number := 0
-	valueStr := ""
-	for i := characterIndex; i < len(str); i++ {
-		c := str[i]
-		switch c {
-		case ']', ',':
-			return number, i - 1
-		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			valueStr += string(c)
-			value, err := strconv.Atoi(valueStr)
-			if err != nil {
-				return 0, i
-			}
-			number = value
-		}
-	}
-
-	panic("unexpected end of string")
-}
-
-func ParsePacketElement(line string, characterIndex int, parentElement *PacketElement) int {
-	for i := characterIndex; i < len(line); i++ {
-		c := line[i]
-		switch c {
-		case '[':
-			pe := NewPacketElement()
-			updatedIndex := ParsePacketElement(line, i+1, pe)
-
-			parentElement.List = append(parentElement.List, pe)
-
-			i = updatedIndex
-		case ']':
-			return i
-		case ',':
-		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			value, updatedIndex := ParseNumber(line, i)
-
-			pe := NewPacketElement()
-			pe.Number = true
-			pe.Value = value
-
-			parentElement.List = append(parentElement.List, pe)
-			i = updatedIndex
-		}
-	}
-
-	return 0
-}
-
-func ParsePairs(fileContents string) []Pair {
-	lines := strings.Split(fileContents, "\n")
-
-	pairs := make([]Pair, 0)
-
-	for i := 0; i < len(lines); i++ {
-		line1 := lines[i]
-		pes1 := ParsePacketElements(line1)
-		i++
-
-		line2 := lines[i]
-		pes2 := ParsePacketElements(line2)
-		i++ // Skip over blank line
-
-		pairs = append(pairs, Pair{p1: pes1, line1: line1, p2: pes2, line2: line2})
-	}
-
-	return pairs
-}
-
-func ParsePackets(fileContents string) PacketElementList {
-	list := make(PacketElementList, 0)
-
-	for _, line := range strings.Split(fileContents, "\n") {
-		if line == "" {
-			continue
-		}
-
-		pes := ParsePacketElements(line)
-		list = append(list, pes)
-	}
-
-	return list
-}
-
-func PairCorrectOrderIndices(pairs []Pair) []int {
-	correctIndices := make([]int, 0)
-
-	for i, pair := range pairs {
-		if ComparePacketElements(pair.p1.List, pair.p2.List) == CorrectOrder {
-			correctIndices = append(correctIndices, i+1)
-		}
-	}
-
-	return correctIndices
-}
-
-func ParsePacketElements(line string) *PacketElement {
-	pe := NewPacketElement()
-
-	pe.line = line
-	ParsePacketElement(line, 1, pe)
-
-	return pe
-}
-
-type ComparisonResult int
+type TerrainRow []Terrain
 
 const (
-	CorrectOrder ComparisonResult = iota
-	IncorrectOrder
-	EqualResult
+	Ash Terrain = iota
+	Rock
 )
 
-func ComparePacketElements(p1, p2 PacketElementList) ComparisonResult {
-	for i := 0; i < len(p1); i++ {
-		// See if we've reached the end of p2.
-		if i == len(p2) {
-			return IncorrectOrder
-		}
-		e1 := p1[i]
-		e2 := p2[i]
-
-		if e1.Number && e2.Number {
-			// Number/number
-			if e1.Value < e2.Value {
-				return CorrectOrder
-			} else if e1.Value > e2.Value {
-				return IncorrectOrder
-			}
-		} else if e1.Number && !e2.Number {
-			// Number/list
-			tempE := NewPacketElement()
-			tempE.Number = false
-			tempE.List = append(tempE.List, e1)
-			result := ComparePacketElements(tempE.List, e2.List)
-			if result != EqualResult {
-				return result
-			}
-		} else if !e1.Number && e2.Number {
-			// List/number
-			tempE := NewPacketElement()
-			tempE.Number = false
-			tempE.List = append(tempE.List, e2)
-			result := ComparePacketElements(e1.List, tempE.List)
-			if result != EqualResult {
-				return result
-			}
-		} else {
-			// List/list
-			result := ComparePacketElements(e1.List, e2.List)
-			if result != EqualResult {
-				return result
-			}
-		}
+func (t Terrain) Describe() string {
+	if t == Ash {
+		return "."
+	} else if t == Rock {
+		return "#"
 	}
 
-	// If len(p1) < len(p2), then it's in the correct order.
-	// If len(p1) == len(p2), then we need to keep checking.
-	// If len(p1) > len(p2), then it's in the wrong order.  That's taken care of above.
-	if len(p1) == len(p2) {
-		return EqualResult
-	}
-
-	return CorrectOrder
+	log.Panicf("unexpected terrain: %d\n", t)
+	return "$"
 }
 
-func FindPacketIndex(line string, list PacketElementList) int {
-	for i, pes := range list {
-		if pes.line == line {
-			return i + 1
+func (t Terrain) Invert() Terrain {
+	if t == Ash {
+		return Rock
+	} else if t == Rock {
+		return Ash
+	}
+
+	log.Panicf("unexpected terrain: %d\n", t)
+	return Ash
+}
+
+type ReflectionAxis byte
+
+const (
+	None ReflectionAxis = iota
+	Vertical
+	Horizontal
+)
+
+type Reflection struct {
+	Axis     ReflectionAxis
+	Position int
+}
+
+func (r Reflection) Describe() string {
+	if r.Axis == Vertical {
+		return fmt.Sprintf("Vertical @ %d", r.Position)
+	} else if r.Axis == Horizontal {
+		return fmt.Sprintf("Horizontal @ %d", r.Position)
+	}
+
+	return "None"
+}
+
+type Landscape struct {
+	Bounds utilities.Size2D
+	Ground []TerrainRow
+}
+
+func (l *Landscape) Describe() string {
+	description := ""
+	for _, r := range l.Ground {
+		str := ""
+
+		for _, t := range r {
+			str += t.Describe()
+		}
+		if description != "" {
+			description += "\n"
+		}
+
+		description += str
+	}
+
+	return description
+}
+
+func (l *Landscape) GetReflectionCore(getExcludedReflection func() Reflection, equalTerrain func(count int, t1 TerrainRow, t2 TerrainRow) bool) Reflection {
+	reflection := Reflection{Axis: None}
+	excludedReflection := Reflection{Axis: None}
+
+	if getExcludedReflection != nil {
+		excludedReflection = getExcludedReflection()
+	}
+
+	// Check for horizontal reflection.
+NextRow:
+	for i := 0; i < l.Bounds.Height-1; i++ {
+		upper := i
+		lower := i + 1
+
+		for {
+			if !equalTerrain(l.Bounds.Width, l.Ground[upper], l.Ground[lower]) {
+				continue NextRow
+			}
+
+			upper--
+			if upper < 0 {
+				break
+			}
+
+			lower++
+			if lower == l.Bounds.Height {
+				break
+			}
+		}
+
+		if excludedReflection.Axis != Horizontal || excludedReflection.Position != i {
+			// If we got here, then we have a horizontal reflection.
+			reflection.Axis = Horizontal
+			reflection.Position = i
+			return reflection
 		}
 	}
 
-	return 0
+	createColumn := func(column int) TerrainRow {
+		t := make(TerrainRow, 0)
+
+		for _, r := range l.Ground {
+			t = append(t, r[column])
+		}
+
+		return t
+	}
+
+	// Check for vertical reflection.
+NextColumn:
+	for i := 0; i < l.Bounds.Width-1; i++ {
+		left := i
+		right := i + 1
+
+		for {
+			t1 := createColumn(left)
+			t2 := createColumn(right)
+
+			if !equalTerrain(l.Bounds.Height, t1, t2) {
+				continue NextColumn
+			}
+
+			left--
+			if left < 0 {
+				break
+			}
+
+			right++
+			if right == l.Bounds.Width {
+				break
+			}
+		}
+
+		if excludedReflection.Axis != Vertical || excludedReflection.Position != i {
+			// If we got here, then we have a vertical reflection.
+			reflection.Axis = Vertical
+			reflection.Position = i
+			return reflection
+		}
+	}
+
+	return reflection
+}
+
+func (l *Landscape) GetReflectionSmudged(excludedReflection Reflection) Reflection {
+	getExcludedReflection := func() Reflection {
+		return excludedReflection
+	}
+
+	equalTerrain := func(count int, t1 TerrainRow, t2 TerrainRow) bool {
+		for i := 0; i < count; i++ {
+			if t1[i] != t2[i] {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	for y := 0; y < l.Bounds.Height; y++ {
+		for x := 0; x < l.Bounds.Width; x++ {
+			l.Ground[y][x] = l.Ground[y][x].Invert()
+			reflection := l.GetReflectionCore(getExcludedReflection, equalTerrain)
+			l.Ground[y][x] = l.Ground[y][x].Invert()
+			if reflection.Axis != None {
+				return reflection
+			}
+		}
+	}
+
+	log.Println(l.Describe())
+	log.Panic("couldn't find alternative reflection\n")
+	return Reflection{}
+}
+
+func (l *Landscape) GetReflection() Reflection {
+	equalTerrain := func(count int, t1 TerrainRow, t2 TerrainRow) bool {
+		for i := 0; i < count; i++ {
+			if t1[i] != t2[i] {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return l.GetReflectionCore(nil, equalTerrain)
+}
+
+func NewLandscape() *Landscape {
+	return &Landscape{}
+}
+
+func ParseLandscape(lines []string) *Landscape {
+	landscape := NewLandscape()
+
+	landscape.Ground = make([]TerrainRow, 0)
+
+	for y, line := range lines {
+		row := make(TerrainRow, 0)
+
+		for _, c := range line {
+			switch c {
+			case '.':
+				row = append(row, Ash)
+			case '#':
+				row = append(row, Rock)
+			}
+
+			if y == 0 {
+				landscape.Bounds.Width++
+			}
+		}
+
+		landscape.Ground = append(landscape.Ground, row)
+
+		landscape.Bounds.Height++
+	}
+
+	return landscape
 }
 
 func day13(fileContents string) error {
-	// Part 1: What is the sum of the packet pairs that are in the correct order?
-	pairs := ParsePairs(fileContents)
+	// Part 1: Find the line of reflection in each of the patterns in your notes.
+	// What number do you get after summarizing all of your notes?
 
-	indexSum := 0
+	lineBundles := make([][]string, 0)
+	currentBundle := make([]string, 0)
 
-	for _, index := range PairCorrectOrderIndices(pairs) {
-		indexSum += index
+	for _, line := range strings.Split(strings.TrimSpace(fileContents), "\n") {
+		if line != "" {
+			currentBundle = append(currentBundle, line)
+		} else {
+			lineBundles = append(lineBundles, currentBundle)
+			currentBundle = make([]string, 0)
+		}
 	}
 
-	fmt.Printf("Index sum %d\n", indexSum)
+	if len(currentBundle) > 0 {
+		lineBundles = append(lineBundles, currentBundle)
+	}
 
-	// Part 2: Break apart the pairs into individual packets.  Insert [[2]] and [[6]].  Sort the packets.
-	// The decoder key is the indices of [[2]] and [[6]] multiplied together.  What's the decoder key?
+	noteSummary := 0
 
-	list := ParsePackets(fileContents)
-	list = append(list, ParsePackets("[[2]]")...)
-	list = append(list, ParsePackets("[[6]]")...)
+	for _, bundles := range lineBundles {
+		landscape := ParseLandscape(bundles)
 
-	sort.Sort(list)
+		reflection := landscape.GetReflection()
 
-	two := FindPacketIndex("[[2]]", list)
-	six := FindPacketIndex("[[6]]", list)
+		if reflection.Axis == Vertical {
+			noteSummary += reflection.Position + 1
+		} else if reflection.Axis == Horizontal {
+			noteSummary += 100 * (reflection.Position + 1)
+		} else {
+			log.Panicf("no reflection found for '%s'\n", strings.Join(bundles, "\n"))
+		}
+	}
 
-	fmt.Printf("Decoder key %d\n", two*six)
+	log.Printf("Note summary: %d\n", noteSummary)
+
+	// Part 2: In each pattern, fix the smudge and find the different line of reflection.
+	// What number do you get after summarizing the new reflection line in each pattern in your notes?
+	noteSummarySmudged := 0
+
+	for _, bundles := range lineBundles {
+		landscape := ParseLandscape(bundles)
+
+		excludedReflection := landscape.GetReflection()
+		reflection := landscape.GetReflectionSmudged(excludedReflection)
+
+		if reflection.Axis == Vertical {
+			noteSummarySmudged += reflection.Position + 1
+		} else if reflection.Axis == Horizontal {
+			noteSummarySmudged += 100 * (reflection.Position + 1)
+		} else {
+			log.Panicf("no reflection found for '%s'\n", strings.Join(bundles, "\n"))
+		}
+	}
+
+	log.Printf("Note summary for smudged mirrors: %d\n", noteSummarySmudged)
+
 	return nil
 }
