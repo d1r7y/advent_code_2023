@@ -1,349 +1,374 @@
 package day14
 
 import (
-	"fmt"
 	"log"
-	"math"
 	"strings"
+	"sync"
+
+	"github.com/d1r7y/advent_2023/utilities"
 )
 
-type Cell byte
+const ColumnsPerGoRoutine = 5
+
+type Rock byte
 
 const (
-	Edge     Cell = '#'
-	Air      Cell = '.'
-	Sand     Cell = 'o'
-	Source   Cell = '+'
-	Infinity Cell = '^'
+	Empty Rock = iota
+	Rounded
+	Cube
 )
 
-func getCellString(cell Cell) string {
-	cellMap := map[Cell]string{
-		Edge:     "#",
-		Air:      ".",
-		Sand:     "o",
-		Source:   "+",
-		Infinity: "^",
+func (r Rock) Describe() string {
+	switch r {
+	case Empty:
+		return "."
+	case Rounded:
+		return "O"
+	case Cube:
+		return "#"
 	}
 
-	return cellMap[cell]
+	log.Panicf("unknown rock type: %d\n", r)
+	return "X"
 }
 
-type Point struct {
-	X int
-	Y int
+type Column []Rock
+
+type Direction byte
+
+type Platform struct {
+	Bounds  utilities.Size2D
+	Columns []Column
 }
 
-type Size struct {
-	W int
-	H int
-}
+func ParsePlatform(lines []string) *Platform {
+	platform := &Platform{}
 
-type Bounds struct {
-	Origin Point
-	Size   Size
-}
+	platform.Bounds.Width = len(lines[0])
+	platform.Bounds.Height = len(lines)
 
-type Column []Cell
+	platform.Columns = make([]Column, platform.Bounds.Width)
 
-type Cave struct {
-	Bounds Bounds
-
-	SandSource Point
-	Columns    []Column
-}
-
-func NewCave(bounds Bounds, sandSource Point) *Cave {
-	c := &Cave{Bounds: bounds}
-
-	columns := make([]Column, bounds.Size.W+1)
-
-	for i := range columns {
-		column := make(Column, bounds.Size.H+1)
-		for j := range column {
-			column[j] = Air
-		}
-
-		columns[i] = column
+	for i := 0; i < platform.Bounds.Width; i++ {
+		platform.Columns[i] = make(Column, platform.Bounds.Height)
 	}
 
-	c.Columns = columns
-
-	// Add in the sand source.
-	c.SandSource = sandSource
-
-	c.SetCell(c.SandSource, Source)
-
-	return c
-}
-
-func (c *Cave) SetCell(p Point, cell Cell) {
-	c.Columns[p.X-c.Bounds.Origin.X][p.Y-c.Bounds.Origin.Y] = cell
-}
-
-func (c *Cave) GetCell(p Point) Cell {
-	if p.X < c.Bounds.Origin.X {
-		return Infinity
-	}
-
-	if p.X >= c.Bounds.Origin.X+c.Bounds.Size.W {
-		return Infinity
-	}
-
-	if p.Y < c.Bounds.Origin.Y {
-		return Infinity
-	}
-
-	if p.Y >= c.Bounds.Origin.Y+c.Bounds.Size.H {
-		return Infinity
-	}
-
-	return c.Columns[p.X-c.Bounds.Origin.X][p.Y-c.Bounds.Origin.Y]
-}
-
-func (c *Cave) AddEdge(p1 Point, p2 Point) {
-	if p1.X == p2.X {
-		// Vertical edge
-		// Find the starting point.
-		var startY int
-		var endY int
-
-		if p1.Y > p2.Y {
-			startY = p2.Y
-			endY = p1.Y
-		} else {
-			startY = p1.Y
-			endY = p2.Y
-		}
-
-		for i := startY; i <= endY; i++ {
-			c.SetCell(Point{p1.X, i}, Edge)
-		}
-	} else if p1.Y == p2.Y {
-		// Horizontal edge
-		// Find the starting point.
-		var startX int
-		var endX int
-
-		if p1.X > p2.X {
-			startX = p2.X
-			endX = p1.X
-		} else {
-			startX = p1.X
-			endX = p2.X
-		}
-
-		for i := startX; i <= endX; i++ {
-			c.SetCell(Point{i, p1.Y}, Edge)
-		}
-	} else {
-		log.Panic("Non vertical or horizontal line")
-	}
-}
-
-func (c *Cave) Describe() string {
-	description := ""
-	for i := 0; i < c.Bounds.Size.H; i++ {
-		for j := 0; j < c.Bounds.Size.W; j++ {
-			p := Point{j + c.Bounds.Origin.X, i + c.Bounds.Origin.Y}
-			cell := c.GetCell(p)
-			description += getCellString(cell)
-		}
-
-		if i != c.Bounds.Size.H-1 {
-			description += "\n"
-		}
-	}
-	return description
-}
-
-type DropResult int
-
-const (
-	SandAtRest DropResult = iota
-	SandFalling
-	SandBlocked
-)
-
-func (c *Cave) DropSand() DropResult {
-	result := SandFalling
-
-	position := c.SandSource
-
-	for result != SandAtRest {
-		// Check if it can drop down.
-		nextPosition := position
-		nextPosition.Y++
-
-		cell := c.GetCell(nextPosition)
-
-		if cell == Infinity {
-			return SandFalling
-		}
-
-		if cell == Air {
-			position = nextPosition
-			continue
-		}
-
-		// Nope.  Try down and left.
-		nextPosition = position
-		nextPosition.Y++
-		nextPosition.X--
-
-		cell = c.GetCell(nextPosition)
-
-		if cell == Infinity {
-			return SandFalling
-		}
-
-		if cell == Air {
-			position = nextPosition
-			continue
-		}
-
-		// Try down and right.
-		nextPosition = position
-		nextPosition.Y++
-		nextPosition.X++
-
-		cell = c.GetCell(nextPosition)
-
-		if cell == Infinity {
-			return SandFalling
-		}
-
-		if cell == Air {
-			position = nextPosition
-			continue
-		}
-
-		// Nope.  Sand is at rest.
-		c.SetCell(position, Sand)
-		if position != c.SandSource {
-			result = SandAtRest
-		} else {
-			return SandBlocked
-		}
-	}
-
-	return result
-}
-
-func ParseCave(fileContents string, infiniteAbyss bool) *Cave {
-	var maxDepth = 0
-	var minWidth = math.MaxInt
-	var maxWidth = -1
-
-	// Determine the size of the cave from the paths of the rock structures.
-	for _, line := range strings.Split(fileContents, "\n") {
-		points := ParsePath(line)
-		for _, p := range points {
-			if p.Y > maxDepth {
-				maxDepth = p.Y
+	for c := 0; c < platform.Bounds.Height; c++ {
+		for r := 0; r < platform.Bounds.Width; r++ {
+			var rock Rock
+			switch lines[c][r] {
+			case '.':
+				rock = Empty
+			case 'O':
+				rock = Rounded
+			case '#':
+				rock = Cube
+			default:
+				log.Fatalf("unknown rock type: %d\n", lines[c][r])
 			}
-			if p.X < minWidth {
-				minWidth = p.X
+
+			platform.Columns[r][c] = rock
+		}
+	}
+
+	return platform
+}
+
+func (p *Platform) Describe() string {
+	str := ""
+
+	for r := 0; r < p.Bounds.Width; r++ {
+		if str != "" {
+			str += "\n"
+		}
+		for c := 0; c < p.Bounds.Height; c++ {
+			str += p.Columns[c][r].Describe()
+		}
+	}
+
+	return str
+}
+
+func (p *Platform) TiltNorth() {
+	processColumns := func(wg *sync.WaitGroup, startColumnIndex int, endColumnIndex int) {
+		if wg != nil {
+			defer wg.Done()
+		}
+
+		for ci := startColumnIndex; ci <= endColumnIndex; ci++ {
+			column := p.Columns[ci]
+			for i := 1; i < p.Bounds.Height; i++ {
+				rock := column[i]
+
+				if rock != Rounded {
+					continue
+				}
+
+				// Rounded rock.
+				// See how far we can slide it before:
+				// - We either hit the top (i=0).
+				// - We hit a cube rock.
+				// - We hit another rounded rock.
+				si := i - 1
+				for ; si >= 0; si-- {
+					if column[si] != Empty {
+						break
+					}
+				}
+
+				if si >= 0 {
+					column[i] = Empty
+					column[si+1] = rock
+				} else {
+					column[0] = rock
+					column[i] = Empty
+				}
 			}
-			if p.X > maxWidth {
-				maxWidth = p.X
+
+		}
+	}
+
+	if len(p.Columns) < ColumnsPerGoRoutine {
+		processColumns(nil, 0, len(p.Columns)-1)
+		return
+	}
+
+	var wg sync.WaitGroup
+
+	groups := len(p.Columns) / ColumnsPerGoRoutine
+	for i := 0; i < groups; i++ {
+		wg.Add(1)
+		go processColumns(&wg, i*ColumnsPerGoRoutine, i*ColumnsPerGoRoutine+ColumnsPerGoRoutine-1)
+	}
+
+	remainder := len(p.Columns) % ColumnsPerGoRoutine
+	if remainder > 0 {
+		wg.Add(remainder)
+		go processColumns(&wg, groups*ColumnsPerGoRoutine, groups*ColumnsPerGoRoutine+remainder)
+	}
+
+	wg.Wait()
+}
+
+func (p *Platform) TiltSouth() {
+	processColumns := func(wg *sync.WaitGroup, startColumnIndex int, endColumnIndex int) {
+		if wg != nil {
+			defer wg.Done()
+		}
+
+		for ci := startColumnIndex; ci <= endColumnIndex; ci++ {
+			column := p.Columns[ci]
+			for i := p.Bounds.Height - 2; i >= 0; i-- {
+				rock := column[i]
+
+				if rock != Rounded {
+					continue
+				}
+
+				// Rounded rock.
+				// See how far we can slide it before:
+				// - We either hit the bottom (i=p.Bounds.Height-1).
+				// - We hit a cube rock.
+				// - We hit another rounded rock.
+				si := i + 1
+				for ; si <= p.Bounds.Height-1; si++ {
+					if column[si] != Empty {
+						break
+					}
+				}
+
+				if si <= p.Bounds.Height-1 {
+					column[i] = Empty
+					column[si-1] = rock
+				} else {
+					column[p.Bounds.Height-1] = rock
+					column[i] = Empty
+				}
 			}
 		}
 	}
 
-	sandSource := Point{500, 0}
-
-	var caveBounds Bounds
-
-	// Probably a smarter way to handle this, but let's just make the cave quite wide to handle the "infinite"
-	// bottom row...
-	if infiniteAbyss {
-		caveBounds = Bounds{Origin: Point{minWidth, 0}, Size: Size{(maxWidth - minWidth) + 1, maxDepth + 1}}
-	} else {
-		caveBounds = Bounds{Origin: Point{0, 0}, Size: Size{1001, maxDepth + 3}}
+	if len(p.Columns) < ColumnsPerGoRoutine {
+		processColumns(nil, 0, len(p.Columns)-1)
+		return
 	}
 
-	cave := NewCave(caveBounds, sandSource)
+	var wg sync.WaitGroup
 
-	// Now add the points
-	for _, line := range strings.Split(fileContents, "\n") {
-		points := ParsePath(line)
-		for i := 0; i < len(points)-1; i++ {
-			p1 := points[i]
-			p2 := points[i+1]
-
-			cave.AddEdge(p1, p2)
-		}
+	groups := len(p.Columns) / ColumnsPerGoRoutine
+	for i := 0; i < groups; i++ {
+		wg.Add(1)
+		go processColumns(&wg, i*ColumnsPerGoRoutine, i*ColumnsPerGoRoutine+ColumnsPerGoRoutine-1)
 	}
 
-	// If there's no infinite abyss below us, add the final line.
-	if !infiniteAbyss {
-		p1 := Point{0, maxDepth + 2}
-		p2 := Point{1000, maxDepth + 2}
-		cave.AddEdge(p1, p2)
+	remainder := len(p.Columns) % ColumnsPerGoRoutine
+	if remainder > 0 {
+		wg.Add(remainder)
+		go processColumns(&wg, groups*ColumnsPerGoRoutine, groups*ColumnsPerGoRoutine+remainder)
 	}
 
-	return cave
+	wg.Wait()
 }
 
-func ParsePath(line string) []Point {
-	points := make([]Point, 0)
-
-	for _, ps := range strings.Split(line, " -> ") {
-		var x, y int
-
-		count, err := fmt.Sscanf(ps, "%d,%d", &x, &y)
-		if err != nil {
-			log.Panic(err)
+func (p *Platform) TiltEast() {
+	processRows := func(wg *sync.WaitGroup, startRowIndex int, endRowIndex int) {
+		if wg != nil {
+			defer wg.Done()
 		}
 
-		if count != 2 {
-			log.Panic("invalid point")
-		}
+		for ri := startRowIndex; ri <= endRowIndex; ri++ {
+			for j := p.Bounds.Width - 2; j >= 0; j-- {
+				rock := p.Columns[j][ri]
 
-		points = append(points, Point{X: x, Y: y})
+				if rock != Rounded {
+					continue
+				}
+
+				// Rounded rock.
+				// See how far we can slide it before:
+				// - We either hit the right (j=p.Bounds.Width-1).
+				// - We hit a cube rock.
+				// - We hit another rounded rock.
+				si := j + 1
+				for ; si <= p.Bounds.Width-1; si++ {
+					if p.Columns[si][ri] != Empty {
+						break
+					}
+				}
+
+				if si <= p.Bounds.Width-1 {
+					p.Columns[j][ri] = Empty
+					p.Columns[si-1][ri] = rock
+				} else {
+					p.Columns[p.Bounds.Width-1][ri] = rock
+					p.Columns[j][ri] = Empty
+				}
+			}
+		}
 	}
 
-	return points
+	if len(p.Columns[0]) < ColumnsPerGoRoutine {
+		processRows(nil, 0, len(p.Columns[0])-1)
+		return
+	}
+
+	var wg sync.WaitGroup
+
+	groups := len(p.Columns[0]) / ColumnsPerGoRoutine
+	for i := 0; i < groups; i++ {
+		wg.Add(1)
+		go processRows(&wg, i*ColumnsPerGoRoutine, i*ColumnsPerGoRoutine+ColumnsPerGoRoutine-1)
+	}
+
+	remainder := len(p.Columns[0]) % ColumnsPerGoRoutine
+	if remainder > 0 {
+		wg.Add(remainder)
+		go processRows(&wg, groups*ColumnsPerGoRoutine, groups*ColumnsPerGoRoutine+remainder)
+	}
+
+	wg.Wait()
+}
+
+func (p *Platform) TiltWest() {
+	processRows := func(wg *sync.WaitGroup, startRowIndex int, endRowIndex int) {
+		if wg != nil {
+			defer wg.Done()
+		}
+
+		for ri := startRowIndex; ri <= endRowIndex; ri++ {
+			for j := 1; j <= p.Bounds.Width-1; j++ {
+				rock := p.Columns[j][ri]
+
+				if rock != Rounded {
+					continue
+				}
+
+				// Rounded rock.
+				// See how far we can slide it before:
+				// - We either hit the left (j=0).
+				// - We hit a cube rock.
+				// - We hit another rounded rock.
+				si := j - 1
+				for ; si >= 0; si-- {
+					if p.Columns[si][ri] != Empty {
+						break
+					}
+				}
+
+				if si >= 0 {
+					p.Columns[j][ri] = Empty
+					p.Columns[si+1][ri] = rock
+				} else {
+					p.Columns[0][ri] = rock
+					p.Columns[j][ri] = Empty
+				}
+			}
+		}
+	}
+
+	if len(p.Columns[0]) < ColumnsPerGoRoutine {
+		processRows(nil, 0, len(p.Columns[0])-1)
+		return
+	}
+
+	var wg sync.WaitGroup
+
+	groups := len(p.Columns[0]) / ColumnsPerGoRoutine
+	for i := 0; i < groups; i++ {
+		wg.Add(1)
+		go processRows(&wg, i*ColumnsPerGoRoutine, i*ColumnsPerGoRoutine+ColumnsPerGoRoutine-1)
+	}
+
+	remainder := len(p.Columns[0]) % ColumnsPerGoRoutine
+	if remainder > 0 {
+		wg.Add(remainder)
+		go processRows(&wg, groups*ColumnsPerGoRoutine, groups*ColumnsPerGoRoutine+remainder)
+	}
+
+	wg.Wait()
+}
+
+func (p *Platform) TiltCycle() {
+	p.TiltNorth()
+	p.TiltWest()
+	p.TiltSouth()
+	p.TiltEast()
+}
+
+func (p *Platform) Load() int {
+	totalLoad := 0
+
+	for _, column := range p.Columns {
+		for i := 0; i < p.Bounds.Height; i++ {
+			if column[i] == Rounded {
+				totalLoad += p.Bounds.Height - i
+			}
+		}
+	}
+
+	return totalLoad
 }
 
 func day14(fileContents string) error {
-	// Part 1: How many units of sand come to rest before sand starts flowing into the abyss below?
-	cave := ParseCave(fileContents, true)
+	platform := ParsePlatform(strings.Split(fileContents, "\n"))
 
-	fmt.Println(cave.Describe())
+	// Part 1: Tilt the platform so that the rounded rocks all roll north.
+	// Afterward, what is the total load on the north support beams?
+	platform.TiltNorth()
 
-	sandCount := 0
+	log.Printf("Total load on north support beams: %d\n", platform.Load())
 
-	for {
-		result := cave.DropSand()
-		if result == SandFalling {
-			break
+	// Part 2: Run the spin cycle for 1000000000 cycles. Afterward, what is the
+	// total load on the north support beams?
+	for i := 0; i < 1000000000; i++ {
+		if i%100000 == 0 {
+			log.Printf("Cycle %d\n", i)
 		}
-		sandCount++
+
+		platform.TiltCycle()
 	}
 
-	fmt.Printf("%d sand units come to rest before the others start flowing into the abyss.\n", sandCount)
-
-	fmt.Println(cave.Describe())
-
-	// Part 2: You misread the scan.  There isn't an infinite void.  You're standing on the floor.  It's
-	// an infinite horizontal line with a Y coordinate +2 of the highest Y coordinate of any point in your
-	// scan.  How much sand can drop until it blocks the source?
-
-	cave2 := ParseCave(fileContents, false)
-
-	sandCount2 := 1
-
-	for {
-		result := cave2.DropSand()
-		if result == SandBlocked {
-			break
-		}
-		sandCount2++
-	}
-
-	fmt.Printf("%d sand units come to rest before the source is blocked.\n", sandCount2)
+	log.Printf("Total load on north support beams after spin cycles: %d\n", platform.Load())
 
 	return nil
 }
