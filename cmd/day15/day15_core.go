@@ -1,249 +1,144 @@
 package day15
 
 import (
-	"fmt"
 	"log"
-	"math"
+	"strconv"
 	"strings"
 )
 
-type Point struct {
-	X int
-	Y int
+type Lens struct {
+	Name        string
+	FocalLength int
 }
 
-type Sensor struct {
-	Position       Point
-	Beacon         Point
-	BeaconDistance int
+type Box struct {
+	Number int
+	Lenses []Lens
 }
 
-type SensorList []*Sensor
+func (b Box) FocusingPower() int {
+	focusingPower := 0
 
-func (s SensorList) Len() int {
-	return len(s)
-}
-
-func (s SensorList) Less(i, j int) bool {
-	if s[i].Position.X < s[j].Position.X {
-		return true
-	}
-	if s[i].Position.X > s[j].Position.X {
-		return false
+	for i, l := range b.Lenses {
+		focusingPower += (b.Number + 1) * (i + 1) * l.FocalLength
 	}
 
-	// X values are equal.
+	return focusingPower
+}
 
-	if s[i].Position.Y < s[j].Position.Y {
-		return true
+type BoxLine [256]Box
+
+func NewBoxLine() *BoxLine {
+	bl := &BoxLine{}
+
+	for i := 0; i < len(bl); i++ {
+		bl[i].Number = i
+		bl[i].Lenses = make([]Lens, 0)
 	}
 
-	return false
+	return bl
 }
 
-func (s SensorList) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
+func (bl *BoxLine) RemoveLens(name string) {
+	boxIndex := Hash(name)
+
+	for i, b := range bl[boxIndex].Lenses {
+		if b.Name == name {
+			lenses := make([]Lens, 0)
+			lenses = append(lenses, bl[boxIndex].Lenses[:i]...)
+			bl[boxIndex].Lenses = append(lenses, bl[boxIndex].Lenses[i+1:]...)
+
+			return
+		}
+	}
 }
 
-type Network struct {
-	Min     Point
-	Max     Point
-	Sensors SensorList
-}
+func (bl *BoxLine) SetLens(name string, focalLength int) {
+	boxIndex := Hash(name)
 
-func (n *Network) ClosestSensor(p Point) *Sensor {
-	closestDistance := math.MaxInt
-	var closestSensor *Sensor
+	for i := range bl[boxIndex].Lenses {
+		if bl[boxIndex].Lenses[i].Name == name {
+			bl[boxIndex].Lenses[i].FocalLength = focalLength
 
-	for _, s := range n.Sensors {
-		d := ManhattanDistance(s.Position, p)
-
-		if d < closestDistance {
-			closestDistance = d
-			closestSensor = s
+			return
 		}
 	}
 
-	return closestSensor
+	// Lens name didn't exist.  Add it to the end of the list.
+	bl[boxIndex].Lenses = append(bl[boxIndex].Lenses, Lens{Name: name, FocalLength: focalLength})
 }
 
-func (n *Network) SensorIntersection(p Point) SensorList {
-	sensors := make(SensorList, 0)
+func (bl *BoxLine) TotalFocusingPower() int {
+	totalFocusingPower := 0
 
-	for _, s := range n.Sensors {
-		d := ManhattanDistance(s.Position, p)
-
-		if d <= s.BeaconDistance {
-			sensors = append(sensors, s)
-		}
+	for _, b := range bl {
+		totalFocusingPower += b.FocusingPower()
 	}
 
-	return sensors
+	return totalFocusingPower
 }
 
-func (n *Network) InvalidBeaconLocations(row int) []Point {
-	// Since sensors can overlap, duplicate points can appear.  Create a map
-	// with the points as keys to keep them unique.
-	locationMap := make(map[Point]bool)
-
-	for i := n.Min.X; i <= n.Max.X; i++ {
-		p := Point{i, row}
-
-		sensors := n.SensorIntersection(p)
-		for _, s := range sensors {
-			if p != s.Beacon {
-				d := ManhattanDistance(p, s.Position)
-				if d <= s.BeaconDistance {
-					locationMap[p] = true
-				}
-			}
-		}
-	}
-
-	locations := make([]Point, 0)
-
-	// Extract the keys.
-	for p := range locationMap {
-		locations = append(locations, p)
-	}
-
-	return locations
+func Hash(str string) byte {
+	return RunningHash(0, str)
 }
 
-func (n *Network) PossibleBeaconLocations() []Point {
-	locations := make([]Point, 0)
+func RunningHash(currentHash byte, str string) byte {
+	for _, c := range str {
+		currentHash += byte(c)
+		interim := int(currentHash) * 17
+		currentHash = byte(interim % 256)
+	}
 
-	for i := n.Min.Y; i <= n.Max.Y; i++ {
-	NextLocation:
-		for j := n.Min.X; j <= n.Max.X; j++ {
-			p := Point{j, i}
+	return currentHash
+}
 
-			for _, s := range n.Sensors {
-				d := ManhattanDistance(s.Position, p)
+func SumInitializationSequence(str string) int {
+	sum := 0
+	for _, s := range strings.Split(str, ",") {
+		sum += int(Hash(s))
+	}
 
-				if d <= s.BeaconDistance {
-					j = s.Position.X + s.BeaconDistance - AbsoluteDifference(i, s.Position.Y)
-					continue NextLocation
-				}
+	return sum
+}
+
+func SumFocusingPowerFromInitializationSequence(str string) int {
+	bl := NewBoxLine()
+
+	for _, is := range strings.Split(str, ",") {
+		// "is" consists of a label and either:
+		// * an = followed by a number
+		// * a -
+		equal := strings.Split(is, "=")
+		if len(equal) == 2 {
+			fl, err := strconv.Atoi(equal[1])
+			if err != nil {
+				log.Fatal(err)
 			}
 
-			locations = append(locations, p)
-		}
-	}
-
-	return locations
-}
-
-func AbsoluteDifference(a, b int) int {
-	if a < b {
-		return b - a
-	}
-
-	return a - b
-}
-
-func ManhattanDistance(p1, p2 Point) int {
-	return AbsoluteDifference(p1.X, p2.X) + AbsoluteDifference(p1.Y, p2.Y)
-}
-
-func NewSensor(position Point, beacon Point) *Sensor {
-	s := &Sensor{Position: position, Beacon: beacon}
-	s.BeaconDistance = ManhattanDistance(s.Position, s.Beacon)
-	return s
-}
-
-func ParseSensorLine(line string) *Sensor {
-	var sensorX, sensorY int
-	var beaconX, beaconY int
-
-	count, err := fmt.Sscanf(line, "Sensor at x=%d, y=%d: closest beacon is at x=%d, y=%d", &sensorX, &sensorY, &beaconX, &beaconY)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	if count != 4 {
-		log.Panic("invalid sensor line")
-	}
-
-	return NewSensor(Point{sensorX, sensorY}, Point{beaconX, beaconY})
-}
-
-func ParseSensors(fileContents string) SensorList {
-	sensors := make(SensorList, 0)
-
-	for _, line := range strings.Split(fileContents, "\n") {
-		sensor := ParseSensorLine(line)
-		sensors = append(sensors, sensor)
-	}
-
-	return sensors
-}
-
-func ParseNetwork(fileContents string, tightBounds bool) *Network {
-	sensors := ParseSensors(fileContents)
-	n := &Network{Sensors: sensors}
-
-	n.Min = Point{math.MaxInt, math.MaxInt}
-	n.Max = Point{math.MinInt, math.MinInt}
-
-	for _, sensor := range sensors {
-		if tightBounds {
-			if sensor.Position.X < n.Min.X {
-				n.Min.X = sensor.Position.X
-			}
-			if sensor.Position.Y < n.Min.Y {
-				n.Min.Y = sensor.Position.Y
-			}
-
-			if sensor.Position.X > n.Max.X {
-				n.Max.X = sensor.Position.X
-			}
-			if sensor.Position.Y > n.Max.Y {
-				n.Max.Y = sensor.Position.Y
-			}
+			bl.SetLens(equal[0], fl)
 		} else {
-			if sensor.Position.X-sensor.BeaconDistance < n.Min.X {
-				n.Min.X = sensor.Position.X - sensor.BeaconDistance
-			}
-			if sensor.Position.Y-sensor.BeaconDistance < n.Min.Y {
-				n.Min.Y = sensor.Position.Y - sensor.BeaconDistance
-			}
-
-			if sensor.Position.X+sensor.BeaconDistance > n.Max.X {
-				n.Max.X = sensor.Position.X + sensor.BeaconDistance
-			}
-			if sensor.Position.Y+sensor.BeaconDistance > n.Max.Y {
-				n.Max.Y = sensor.Position.Y + sensor.BeaconDistance
-			}
+			label := strings.ReplaceAll(is, "-", "")
+			bl.RemoveLens(label)
 		}
 	}
 
-	return n
+	return bl.TotalFocusingPower()
 }
 
 func day15(fileContents string) error {
-	// Part 1: Given a sensor report containing sensor locations and the closest beacons to
-	// them, which locations, in a given row, cannot contain a beacon?
-	n := ParseNetwork(fileContents, false)
+	// Part 1: Run the HASH algorithm on each step in the initialization sequence.
+	// What is the sum of the results? (The initialization sequence is one long line;
+	// be careful when copy-pasting it.)
+	sum := SumInitializationSequence(fileContents)
 
-	row := 2000000
-	invalidLocations := n.InvalidBeaconLocations(row)
+	log.Printf("Sum of initialization sequence hash: %d\n", sum)
 
-	fmt.Printf("Beacons cannot be in %d locations in row %d.\n", len(invalidLocations), row)
+	// Part 2: With the help of an over-enthusiastic reindeer in a hard hat,
+	// follow the initialization sequence. What is the focusing power of the
+	// resulting lens configuration?
+	focusingPower := SumFocusingPowerFromInitializationSequence(fileContents)
 
-	// Part 2: Given a sensor report containing sensor locations and the closest beacons to
-	// them, there is only a single location where the distress beacon can be.  You can calculate
-	// its tuning frequency by multiplying its x coordinate by 4000000 and adding its y coordinate.
-	n = ParseNetwork(fileContents, true)
-
-	validLocations := n.PossibleBeaconLocations()
-
-	if len(validLocations) > 1 {
-		fmt.Printf("Unexpected number of possible beacon locations: %d\n", len(validLocations))
-		return nil
-	}
-
-	fmt.Printf("Distress beacon tuning frequency %d.\n", validLocations[0].X*4000000+validLocations[0].Y)
+	log.Printf("Focusing power of resulting lens configuration: %d\n", focusingPower)
 
 	return nil
 }
