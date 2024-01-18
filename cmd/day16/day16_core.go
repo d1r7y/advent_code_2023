@@ -1,366 +1,475 @@
 package day16
 
 import (
-	"errors"
-	"fmt"
+	"log"
+	"math"
 	"strings"
+
+	"github.com/d1r7y/advent_2023/utilities"
 )
 
-const StartingValve = "AA"
+type Direction byte
 
-type ValveMap map[string]*Valve
+const (
+	North Direction = 1 << 0
+	East            = 1 << 1
+	South           = 1 << 2
+	West            = 1 << 3
+)
 
-type VisitedValve map[string]bool
-
-type Labyrinth struct {
-	ValveCount                     int
-	Map                            ValveMap
-	Time                           int
-	OpenValves                     []*Valve
-	CurrentPressureReleasedPerTime int
-	TotalPressureReleased          int
+type Photon struct {
+	Direction Direction
+	Position  utilities.Point2D
 }
 
-func NewLabyrinth() *Labyrinth {
-	return &Labyrinth{Time: 1, Map: make(ValveMap), OpenValves: make([]*Valve, 0)}
+func NewPhoton(x, y int, direction Direction) Photon {
+	return Photon{Position: utilities.NewPoint2D(x, y), Direction: direction}
 }
 
-func (l *Labyrinth) AddValve(v *Valve) {
-	l.Map[v.Name] = v
-	l.ValveCount++
+type Tile byte
+
+func (t Tile) Describe() string {
+	switch t {
+	case Empty:
+		return "."
+	case LeftMirror:
+		return "\\"
+	case RightMirror:
+		return "/"
+	case VerticalSplitter:
+		return "|"
+	case HorizontalSplitter:
+		return "-"
+	}
+
+	log.Panicf("unknown tile: %d\n", t)
+	return "*"
 }
 
-func (l *Labyrinth) DeleteValve(valveName string) {
-	delete(l.Map, valveName)
-	l.ValveCount--
+const (
+	Empty Tile = iota
+	LeftMirror
+	RightMirror
+	VerticalSplitter
+	HorizontalSplitter
+)
+
+type TileRow []Tile
+
+type VisitedTile Direction
+
+func (vt VisitedTile) Describe() string {
+	description := ""
+
+	if vt&VisitedTile(North) != 0 {
+		description += "north "
+	}
+	if vt&VisitedTile(East) != 0 {
+		description += "east "
+	}
+	if vt&VisitedTile(South) != 0 {
+		description += "south "
+	}
+	if vt&VisitedTile(West) != 0 {
+		description += "north "
+	}
+
+	return description
 }
 
-func (l *Labyrinth) FindValve(name string) *Valve {
-	return l.Map[name]
+type VisitedTileRow []VisitedTile
+
+type Grid struct {
+	Photons     *utilities.FIFO[Photon]
+	Bounds      utilities.Size2D
+	Rows        []TileRow
+	VisitedRows []VisitedTileRow
 }
 
-func (l *Labyrinth) SimplifyDepthFirst(valveName string, visited VisitedValve) {
-	valve := l.FindValve(valveName)
+func (g *Grid) Describe() string {
+	description := ""
+	for _, r := range g.Rows {
+		str := ""
 
-	visited[valveName] = true
-
-	if valve.PressureRelief == 0 && valve.Name != StartingValve {
-		// Here's a useless valve that isn't the starting valve.
-		// Find all references to it and remove it.
-		for _, st := range valve.Tunnels {
-			siblingValve := l.FindValve(st.ValveName)
-			newSiblingTunnels := make([]Tunnel, 0)
-			for _, ct := range siblingValve.Tunnels {
-				// Add existing tunnels, skipping the valve we want to remove.
-				if ct.ValveName != valveName {
-					newSiblingTunnels = append(newSiblingTunnels, ct)
-				}
-			}
-
-			// Now add tunnels to valve's other siblings, skipping current sibling.  Tunnels need to have
-			// a higher cost.
-			for _, st2 := range valve.Tunnels {
-				if st2.ValveName != st.ValveName {
-					nt := NewTunnel(st2.ValveName, st.Cost+st2.Cost)
-					newSiblingTunnels = append(newSiblingTunnels, nt)
-				}
-			}
-
-			// Save updated tunnels
-			siblingValve.Tunnels = newSiblingTunnels
+		for _, t := range r {
+			str += t.Describe()
+		}
+		if description != "" {
+			description += "\n"
 		}
 
-		l.DeleteValve(valveName)
+		description += str
 	}
 
-	for _, t := range valve.Tunnels {
-		if !visited[t.ValveName] {
-			l.SimplifyDepthFirst(t.ValveName, visited)
+	return description
+}
+
+func (g *Grid) validatePosition(position utilities.Point2D) bool {
+	if position.X >= g.Bounds.Width {
+		return false
+	}
+	if position.Y >= g.Bounds.Height {
+		return false
+	}
+
+	return true
+}
+
+func (g *Grid) GetTile(position utilities.Point2D) Tile {
+	if !g.validatePosition(position) {
+		log.Panicf("invalid position %d,%d\n", position.X, position.Y)
+	}
+
+	return g.Rows[position.Y][position.X]
+}
+
+func (g *Grid) UpdateVisitedTile(position utilities.Point2D, direction Direction) {
+	if !g.validatePosition(position) {
+		log.Panicf("invalid position %d,%d\n", position.X, position.Y)
+	}
+
+	g.VisitedRows[position.Y][position.X] |= VisitedTile(direction)
+}
+
+func (g *Grid) HaveVisitedTile(position utilities.Point2D, direction Direction) bool {
+	if !g.validatePosition(position) {
+		log.Panicf("invalid position %d,%d\n", position.X, position.Y)
+	}
+
+	return g.VisitedRows[position.Y][position.X]&VisitedTile(direction) != 0
+}
+
+func (g *Grid) UpdatePhotonEmpty(p Photon) (bool, Photon) {
+	if p.Direction == North {
+		if p.Position.Y > 0 {
+			p.Position.Y--
+		} else {
+			return false, p
+		}
+	} else if p.Direction == East {
+		if p.Position.X < g.Bounds.Width-1 {
+			p.Position.X++
+		} else {
+			return false, p
+		}
+	} else if p.Direction == South {
+		if p.Position.Y < g.Bounds.Height-1 {
+			p.Position.Y++
+		} else {
+			return false, p
+		}
+
+	} else if p.Direction == West {
+		if p.Position.X > 0 {
+			p.Position.X--
+		} else {
+			return false, p
+		}
+	}
+
+	return true, p
+}
+
+func (g *Grid) UpdatePhotonMirror(p Photon, mirrorTile Tile) (bool, Photon) {
+	if (mirrorTile == RightMirror && p.Direction == North) || (mirrorTile == LeftMirror && p.Direction == South) {
+		// Direction will be East
+		if p.Position.X < g.Bounds.Width-1 {
+			p.Direction = East
+			p.Position.X++
+		} else {
+			return false, p
+		}
+	} else if (mirrorTile == RightMirror && p.Direction == East) || (mirrorTile == LeftMirror && p.Direction == West) {
+		// Direction will be North
+		if p.Position.Y > 0 {
+			p.Direction = North
+			p.Position.Y--
+		} else {
+			return false, p
+		}
+	} else if (mirrorTile == RightMirror && p.Direction == South) || (mirrorTile == LeftMirror && p.Direction == North) {
+		// Direction will be West
+		if p.Position.X > 0 {
+			p.Direction = West
+			p.Position.X--
+		} else {
+			return false, p
+		}
+	} else if (mirrorTile == RightMirror && p.Direction == West) || (mirrorTile == LeftMirror && p.Direction == East) {
+		// Direction will be South
+		if p.Position.Y < g.Bounds.Height-1 {
+			p.Direction = South
+			p.Position.Y++
+		} else {
+			return false, p
+		}
+	}
+
+	return true, p
+}
+
+func (g *Grid) UpdatePhotonSplitter(p Photon, splitterTile Tile) []Photon {
+	photons := make([]Photon, 0)
+
+	// Handle no split cases
+	if splitterTile == VerticalSplitter && (p.Direction == North || p.Direction == South) {
+		if c, np := g.UpdatePhotonEmpty(p); c {
+			photons = append(photons, np)
+		}
+		return photons
+	}
+
+	if splitterTile == HorizontalSplitter && (p.Direction == East || p.Direction == West) {
+		if c, np := g.UpdatePhotonEmpty(p); c {
+			photons = append(photons, np)
+		}
+		return photons
+	}
+
+	// Handle split cases
+	if splitterTile == VerticalSplitter {
+		p1 := p
+		p2 := p
+
+		photons := make([]Photon, 0)
+
+		if p1.Position.Y > 0 {
+			p1.Direction = North
+			p1.Position.Y--
+			photons = append(photons, p1)
+		}
+
+		if p2.Position.Y < g.Bounds.Height-1 {
+			p2.Direction = South
+			p2.Position.Y++
+			photons = append(photons, p2)
+		}
+
+		return photons
+	}
+
+	if splitterTile == HorizontalSplitter {
+		p1 := p
+		p2 := p
+
+		photons := make([]Photon, 0)
+
+		if p1.Position.X > 0 {
+			p1.Direction = West
+			p1.Position.X--
+			photons = append(photons, p1)
+		}
+
+		if p2.Position.X < g.Bounds.Width-1 {
+			p2.Direction = East
+			p2.Position.X++
+			photons = append(photons, p2)
+		}
+
+		return photons
+	}
+
+	return photons
+}
+
+func (g *Grid) UpdatePhoton(p Photon, t Tile) []Photon {
+	if t == Empty {
+		if cont, p := g.UpdatePhotonEmpty(p); cont {
+			return []Photon{p}
+		}
+	} else if t == LeftMirror || t == RightMirror {
+		if cont, p := g.UpdatePhotonMirror(p, t); cont {
+			return []Photon{p}
+		}
+
+	} else if t == VerticalSplitter || t == HorizontalSplitter {
+		return g.UpdatePhotonSplitter(p, t)
+	}
+
+	return []Photon{}
+}
+
+func (g *Grid) StartPhoton(initialPhoton Photon, visitedTile func(position utilities.Point2D)) {
+	if !g.validatePosition(initialPhoton.Position) {
+		log.Panicf("invalid position %d,%d\n", initialPhoton.Position.X, initialPhoton.Position.Y)
+	}
+
+	g.Photons.Push(initialPhoton)
+
+	for {
+		if g.Photons.IsEmpty() {
+			break
+		}
+
+		p := g.Photons.Pop()
+		t := g.GetTile(p.Position)
+
+		visitedTile(p.Position)
+
+		g.UpdateVisitedTile(p.Position, p.Direction)
+
+		for _, np := range g.UpdatePhoton(p, t) {
+			if !g.HaveVisitedTile(np.Position, np.Direction) {
+				g.Photons.Push(np)
+			}
 		}
 	}
 }
 
-func (l *Labyrinth) Simplify() {
-	visited := make(VisitedValve)
+func (g *Grid) Reset() {
+	g.Photons = &utilities.FIFO[Photon]{}
 
-	l.SimplifyDepthFirst(StartingValve, visited)
+	g.VisitedRows = make([]VisitedTileRow, 0)
+
+	for i := 0; i < g.Bounds.Height; i++ {
+		g.VisitedRows = append(g.VisitedRows, make(VisitedTileRow, g.Bounds.Width))
+	}
 }
 
-func (l *Labyrinth) Tick() {
-	// Choose what to do.
+func ParseGrid(content string) *Grid {
+	grid := &Grid{}
 
-	// Factor travel time.  Going down paths to single nodes: account for return trip!
-	l.Time++
-}
+	grid.Photons = &utilities.FIFO[Photon]{}
+	grid.Rows = make([]TileRow, 0)
+	grid.VisitedRows = make([]VisitedTileRow, 0)
 
-type Tunnel struct {
-	ValveName string
-	Cost      int
-}
+	for y, line := range strings.Split(strings.TrimSpace(content), "\n") {
+		row := make(TileRow, 0)
 
-func NewTunnel(name string, cost int) Tunnel {
-	return Tunnel{ValveName: name, Cost: cost}
-}
+		for _, c := range line {
+			switch c {
+			case '.':
+				row = append(row, Empty)
+			case '\\':
+				row = append(row, LeftMirror)
+			case '/':
+				row = append(row, RightMirror)
+			case '|':
+				row = append(row, VerticalSplitter)
+			case '-':
+				row = append(row, HorizontalSplitter)
+			}
 
-type Valve struct {
-	Name           string
-	PressureRelief int
-	Opened         bool
-	Tunnels        []Tunnel
-}
+			if y == 0 {
+				grid.Bounds.Width++
+			}
+		}
 
-func NewValve(name string, pressureRelief int) *Valve {
-	return &Valve{Name: name, PressureRelief: pressureRelief, Tunnels: make([]Tunnel, 0)}
-}
-
-func (v *Valve) Open() {
-	v.Opened = true
-}
-
-func ParseValveDefinition(line string) (*Valve, error) {
-	// Remove the semicolon from the line.
-	noSemicolon := strings.ReplaceAll(line, ";", "")
-
-	// Turn the equal sign into space.
-	noEqual := strings.ReplaceAll(noSemicolon, "=", " ")
-
-	var valveName string
-	var valvePressure int
-	var tunnelValve string
-
-	// Check for single tunnel
-	count, err := fmt.Sscanf(noEqual, "Valve %s has flow rate %d tunnel leads to valve %s", &valveName, &valvePressure, &tunnelValve)
-	if err == nil && count == 3 {
-		newValve := NewValve(valveName, valvePressure)
-		c := NewTunnel(tunnelValve, 1)
-		newValve.Tunnels = append(newValve.Tunnels, c)
-
-		return newValve, nil
+		grid.Rows = append(grid.Rows, row)
+		grid.Bounds.Height++
 	}
 
-	// Now try multiple tunnels
-	count, err = fmt.Sscanf(noEqual, "Valve %s has flow rate %d tunnels lead to valves ", &valveName, &valvePressure)
-	if err != nil {
-		return nil, err
-	}
-	if count != 2 {
-		return nil, errors.New("invalid valve definition")
+	for i := 0; i < grid.Bounds.Height; i++ {
+		grid.VisitedRows = append(grid.VisitedRows, make(VisitedTileRow, grid.Bounds.Width))
 	}
 
-	// Now scan the connecting valves.
-	splitStr := strings.SplitAfter(noEqual, "valves ")
-	if len(splitStr) != 2 {
-		return nil, errors.New("invalid connecting valves")
+	return grid
+}
+
+func GetEnergizedTiles(grid *Grid, initialPhoton Photon) string {
+	energizedTiles := make([][]bool, 0)
+
+	for r := 0; r < grid.Bounds.Height; r++ {
+		energizedTiles = append(energizedTiles, make([]bool, grid.Bounds.Width))
 	}
 
-	// Remove the commas
-	noCommas := strings.ReplaceAll(splitStr[1], ",", "")
+	getDescription := func() string {
+		description := ""
+		for y, row := range energizedTiles {
+			if y != 0 {
+				description += "\n"
+			}
 
-	newValve := NewValve(valveName, valvePressure)
-	for _, cv := range strings.Fields(noCommas) {
-		c := NewTunnel(cv, 1)
-		newValve.Tunnels = append(newValve.Tunnels, c)
+			for _, a := range row {
+				if a {
+					description += "#"
+				} else {
+					description += "."
+				}
+			}
+		}
+
+		return description
 	}
 
-	return newValve, nil
+	grid.StartPhoton(initialPhoton, func(position utilities.Point2D) {
+		energizedTiles[position.Y][position.X] = true
+	})
+
+	return getDescription()
+}
+
+func GetEnergizedTilesCount(grid *Grid, initialPhoton Photon) int {
+	energizedTiles := make(map[utilities.Point2D]bool)
+
+	grid.StartPhoton(initialPhoton, func(position utilities.Point2D) {
+		energizedTiles[position] = true
+	})
+
+	energizedTilesCount := 0
+
+	for range energizedTiles {
+		energizedTilesCount++
+	}
+
+	return energizedTilesCount
+}
+
+func GetMaxEnergizedTilesCount(grid *Grid) int {
+	maxEnergizedTileCount := math.MinInt
+
+	getMaxTileCount := func(photon Photon) {
+		grid.Reset()
+		energizedTileCount := GetEnergizedTilesCount(grid, photon)
+
+		if energizedTileCount > maxEnergizedTileCount {
+			maxEnergizedTileCount = energizedTileCount
+		}
+	}
+
+	// Top row
+	for x := 0; x < grid.Bounds.Width; x++ {
+		getMaxTileCount(Photon{Position: utilities.NewPoint2D(x, 0), Direction: South})
+	}
+
+	// Bottom row
+	for x := 0; x < grid.Bounds.Width; x++ {
+		getMaxTileCount(Photon{Position: utilities.NewPoint2D(x, grid.Bounds.Height-1), Direction: North})
+	}
+
+	// Left column
+	for y := 0; y < grid.Bounds.Height; y++ {
+		getMaxTileCount(Photon{Position: utilities.NewPoint2D(0, y), Direction: East})
+	}
+
+	// Right column
+	for y := 0; y < grid.Bounds.Height; y++ {
+		getMaxTileCount(Photon{Position: utilities.NewPoint2D(grid.Bounds.Width-1, y), Direction: West})
+	}
+
+	return maxEnergizedTileCount
 }
 
 func day16(fileContents string) error {
-	l := NewLabyrinth()
+	grid := ParseGrid(fileContents)
 
-	fmt.Println(20*3 + 33*4 + 54*8 + 76*4 + 79*3 + 81*6)
-
-	fmt.Println(21*4 + 41*2 + 44*4 + 66*6 + 68*2 + 81*9)
-	// minute 1:
-	// move to open JJ
-	// minute 2:
-	// still moving to JJ
-	// minute 3:
-	// open JJ
-	// minute 4:
-	// JJ open 21
-	// move to AA
-	// minute 5:
-	// JJ open 21
-	// still moving to AA
-	// minute 6:
-	// JJ open 21
-	// move to DD
-	// minute 7:
-	// JJ open 21
-	// open DD
-	// minute 8:
-	// JJ/DD open 41
-	// move to EE
-	// minute 9:
-	// JJ/DD open 41
-	// open EE
-	// minute 10:
-	// JJ/DD/EE open 44
-	// move to HH
-	// minute 11:
-	// JJ/DD/EE open 44
-	// still moving to HH
-	// minute 12:
-	// JJ/DD/EE open 44
-	// still moving to HH
-	// minute 13:
-	// JJ/DD/EE open 44
-	// open HH
-	// minute 14:
-	// JJ/DD/EE/HH open 66
-	// move to EE
-	// minute 15:
-	// JJ/DD/EE/HH open 66
-	// still moving to EE
-	// minute 16:
-	// JJ/DD/EE/HH open 66
-	// still moving to EE
-	// minute 17:
-	// JJ/DD/EE/HH open 66
-	// move to DD
-	// minute 18:
-	// JJ/DD/EE/HH open 66
-	// move to CC
-	// minute 19:
-	// JJ/DD/EE/HH open 66
-	// open CC
-	// minute 20:
-	// JJ/DD/EE/HH/CC open 68
-	// move to BB
-	// minute 21:
-	// JJ/DD/EE/HH/CC open 68
-	// open BB
-	// minute 22:
-	// JJ/DD/EE/HH/CC/BB open 81
-	// stay
-	// minute 23:
-	// JJ/DD/EE/HH/CC/BB open 81
-	// stay
-	// minute 24:
-	// JJ/DD/EE/HH/CC/BB open 81
-	// stay
-	// minute 25:
-	// JJ/DD/EE/HH/CC/BB open 81
-	// stay
-	// minute 26:
-	// JJ/DD/EE/HH/CC/BB open 81
-	// stay
-	// minute 27:
-	// JJ/DD/EE/HH/CC/BB open 81
-	// stay
-	// minute 28:
-	// JJ/DD/EE/HH/CC/BB open 81
-	// stay
-	// minute 29:
-	// JJ/DD/EE/HH/CC/BB open 81
-	// stay
-	// minute 30:
-	// JJ/DD/EE/HH/CC/BB open 81
-	// stay
-
-	fmt.Println(20*2 + 23*4 + 45*6 + 47*2 + 60*4 + 81*10)
-	// minute 1:
-	// move to DD
-	// minute 2:
-	// open DD
-	// minute 3:
-	// DD release 20 pressure
-	// move to EE
-	// minute 4:
-	// DD release 20 pressure
-	// open EE
-	// minute 5:
-	// DD/EE release 23 pressure
-	// move to HH
-	// minute 6:
-	// DD/EE release 23 pressure
-	// still moving to HH
-	// minute 7:
-	// DD/EE release 23 pressure
-	// still moving to HH
-	// minute 8:
-	// DD/EE release 23 pressure
-	// open HH
-	// minute 9:
-	// DD/EE/HH release 45 pressure
-	// move to EE
-	// minute 10:
-	// DD/EE/HH release 45 pressure
-	// still moving to EE
-	// minute 11:
-	// DD/EE/HH release 45 pressure
-	// still moving to EE
-	// minute 12:
-	// DD/EE/HH release 45 pressure
-	// move to DD
-	// minute 13:
-	// DD/EE/HH release 45 pressure
-	// move to CC
-	// minute 14:
-	// DD/EE/HH release 45 pressure
-	// open CC
-	// minute 15:
-	// DD/EE/HH/CC release 47 pressure
-	// move to BB
-	// minute 16:
-	// DD/EE/HH/CC release 47 pressure
-	// open BB
-	// minute 17:
-	// DD/EE/HH/CC/BB release 60 pressure
-	// move to AA
-	// minute 18:
-	// DD/EE/HH/CC/BB release 60 pressure
-	// move to JJ
-	// minute 19:
-	// DD/EE/HH/CC/BB release 60 pressure
-	// still move to JJ
-	// minute 20:
-	// DD/EE/HH/CC/BB release 60 pressure
-	// open JJ
-	// minute 21:
-	// DD/EE/HH/CC/BB/JJ release 81 pressure
-	// sit
-	// minute 22:
-	// DD/EE/HH/CC/BB/JJ release 81 pressure
-	// sit
-	// minute 23:
-	// DD/EE/HH/CC/BB/JJ release 81 pressure
-	// sit
-	// minute 24:
-	// DD/EE/HH/CC/BB/JJ release 81 pressure
-	// sit
-	// minute 25:
-	// DD/EE/HH/CC/BB/JJ release 81 pressure
-	// sit
-	// minute 26:
-	// DD/EE/HH/CC/BB/JJ release 81 pressure
-	// sit
-	// minute 27:
-	// DD/EE/HH/CC/BB/JJ release 81 pressure
-	// sit
-	// minute 28:
-	// DD/EE/HH/CC/BB/JJ release 81 pressure
-	// sit
-	// minute 29:
-	// DD/EE/HH/CC/BB/JJ release 81 pressure
-	// sit
-	// minute 30:
-	// DD/EE/HH/CC/BB/JJ release 81 pressure
-	// sit
-
-	for _, line := range strings.Split(fileContents, "\n") {
-		valve, err := ParseValveDefinition(line)
-		if err != nil {
-			return err
-		}
-
-		l.AddValve(valve)
+	// Part 1: The light isn't energizing enough tiles to produce lava; to debug the contraption,
+	// you need to start by analyzing the current situation. With the beam starting in the
+	// top-left heading right, how many tiles end up being energized?
+	initialPhoton := Photon{
+		Position:  utilities.NewPoint2D(0, 0),
+		Direction: East,
 	}
 
-	// Simplify the graph by removing valves that don't reduce pressure.
-	l.Simplify()
+	energizedTilesCount := GetEnergizedTilesCount(grid, initialPhoton)
 
-	fmt.Println("Valve count after simplifying ", l.ValveCount)
+	log.Printf("Energized tile count: %d\n", energizedTilesCount)
+
+	// Part 2: Find the initial beam configuration that energizes the largest number of tiles;
+	// how many tiles are energized in that configuration?
+	maximumEnergedTilesCount := GetMaxEnergizedTilesCount(grid)
+
+	log.Printf("Maximum energized tile count: %d\n", maximumEnergedTilesCount)
+
 	return nil
 }

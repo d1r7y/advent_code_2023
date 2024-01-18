@@ -4,55 +4,315 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/d1r7y/advent_2023/utilities"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseValveDefinition(t *testing.T) {
+func TestParseGrid(t *testing.T) {
+	content := `
+.|...\....
+|.-.\.....
+.....|-...
+........|.
+..........
+.........\
+..../.\\..
+.-.-/..|..
+.|....-|.\
+..//.|....`
+
+	grid := ParseGrid(content)
+
+	assert.Equal(t, utilities.NewSize2D(10, 10), grid.Bounds)
+	assert.Equal(t, []TileRow{
+		{Empty, VerticalSplitter, Empty, Empty, Empty, LeftMirror, Empty, Empty, Empty, Empty},
+		{VerticalSplitter, Empty, HorizontalSplitter, Empty, LeftMirror, Empty, Empty, Empty, Empty, Empty},
+		{Empty, Empty, Empty, Empty, Empty, VerticalSplitter, HorizontalSplitter, Empty, Empty, Empty},
+		{Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, VerticalSplitter, Empty},
+		{Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty},
+		{Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, LeftMirror},
+		{Empty, Empty, Empty, Empty, RightMirror, Empty, LeftMirror, LeftMirror, Empty, Empty},
+		{Empty, HorizontalSplitter, Empty, HorizontalSplitter, RightMirror, Empty, Empty, VerticalSplitter, Empty, Empty},
+		{Empty, VerticalSplitter, Empty, Empty, Empty, Empty, HorizontalSplitter, VerticalSplitter, Empty, LeftMirror},
+		{Empty, Empty, RightMirror, RightMirror, Empty, VerticalSplitter, Empty, Empty, Empty, Empty},
+	}, grid.Rows)
+}
+
+func TestGridDescribe(t *testing.T) {
+	content := `
+.|...\....
+|.-.\.....
+.....|-...
+........|.
+..........
+.........\
+..../.\\..
+.-.-/..|..
+.|....-|.\
+..//.|....`
+
+	grid := ParseGrid(content)
+
+	assert.Equal(t, strings.TrimSpace(content), grid.Describe())
+}
+
+func TestUpdatePhotonEmpty(t *testing.T) {
+	content := `
+.|...\....
+|.-.\.....
+.....|-...
+........|.
+..........
+.........\
+..../.\\..
+.-.-/..|..
+.|....-|.\
+..//.|....`
+
+	grid := ParseGrid(content)
+
 	type testCase struct {
-		str           string
-		expectedErr   bool
-		expectedValve Valve
+		photon           Photon
+		expectedContinue bool
+		expectedPhoton   Photon
 	}
 
 	testCases := []testCase{
-		{"Valve AA has flow rate=0; tunnels lead to valves DD, II, BB", false, Valve{"AA", 0, false, []Tunnel{{"DD", 1}, {"II", 1}, {"BB", 1}}}},
-		{"Valve BB has flow rate=13; tunnels lead to valves CC, AA", false, Valve{"BB", 13, false, []Tunnel{{"CC", 1}, {"AA", 1}}}},
-		{"Valve HH has flow rate=22; tunnel leads to valve GG", false, Valve{"HH", 22, false, []Tunnel{{"GG", 1}}}},
+		{NewPhoton(0, 0, East), true, NewPhoton(1, 0, East)},
+		{NewPhoton(0, 0, West), false, NewPhoton(0, 0, West)},
+		{NewPhoton(0, 0, North), false, NewPhoton(0, 0, North)},
+		{NewPhoton(0, 0, South), true, NewPhoton(0, 1, South)},
+
+		{NewPhoton(grid.Bounds.Width-1, 0, East), false, NewPhoton(grid.Bounds.Width-1, 0, East)},
+		{NewPhoton(grid.Bounds.Width-1, 0, West), true, NewPhoton(grid.Bounds.Width-2, 0, West)},
+		{NewPhoton(grid.Bounds.Width-1, 0, North), false, NewPhoton(grid.Bounds.Width-1, 0, North)},
+		{NewPhoton(grid.Bounds.Width-1, 0, South), true, NewPhoton(grid.Bounds.Width-1, 1, South)},
+
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, East), false, NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, East)},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, West), true, NewPhoton(grid.Bounds.Width-2, grid.Bounds.Height-1, West)},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, North), true, NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-2, North)},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, South), false, NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, South)},
+
+		{NewPhoton(0, grid.Bounds.Height-1, East), true, NewPhoton(1, grid.Bounds.Height-1, East)},
+		{NewPhoton(0, grid.Bounds.Height-1, West), false, NewPhoton(0, grid.Bounds.Height-1, West)},
+		{NewPhoton(0, grid.Bounds.Height-1, North), true, NewPhoton(0, grid.Bounds.Height-2, North)},
+		{NewPhoton(0, grid.Bounds.Height-1, South), false, NewPhoton(0, grid.Bounds.Height-1, South)},
 	}
+
 	for _, test := range testCases {
-		valve, err := ParseValveDefinition(test.str)
+		cont, newPhoton := grid.UpdatePhotonEmpty(test.photon)
 
-		if test.expectedErr {
-			assert.Error(t, err)
-		} else {
-			assert.NoError(t, err)
-
-			assert.Equal(t, test.expectedValve, *valve)
-		}
+		assert.Equal(t, test.expectedContinue, cont)
+		assert.Equal(t, test.expectedPhoton, newPhoton)
 	}
 }
 
-func TestSimplify(t *testing.T) {
-	valveDefinitions := `Valve AA has flow rate=0; tunnels lead to valves DD, II, BB
-Valve BB has flow rate=13; tunnels lead to valves CC, AA
-Valve CC has flow rate=2; tunnels lead to valves DD, BB
-Valve DD has flow rate=20; tunnels lead to valves CC, AA, EE
-Valve EE has flow rate=3; tunnels lead to valves FF, DD
-Valve FF has flow rate=0; tunnels lead to valves EE, GG
-Valve GG has flow rate=0; tunnels lead to valves FF, HH
-Valve HH has flow rate=22; tunnel leads to valve GG
-Valve II has flow rate=0; tunnels lead to valves AA, JJ
-Valve JJ has flow rate=21; tunnel leads to valve II`
+func TestUpdatePhotonMirror(t *testing.T) {
+	content := `
+.|...\....
+|.-.\.....
+.....|-...
+........|.
+..........
+.........\
+..../.\\..
+.-.-/..|..
+.|....-|.\
+..//.|....`
 
-	l := NewLabyrinth()
+	grid := ParseGrid(content)
 
-	for _, line := range strings.Split(valveDefinitions, "\n") {
-		valve, err := ParseValveDefinition(line)
-		assert.NoError(t, err)
-
-		l.AddValve(valve)
+	type testCase struct {
+		photon           Photon
+		tile             Tile
+		expectedContinue bool
+		expectedPhoton   Photon
 	}
 
-	// Simplify the graph by removing valves that don't reduce pressure.
-	l.Simplify()
+	testCases := []testCase{
+		{NewPhoton(0, 0, East), LeftMirror, true, NewPhoton(0, 1, South)},
+		{NewPhoton(0, 0, East), RightMirror, false, NewPhoton(0, 0, East)},
+		{NewPhoton(1, 0, West), LeftMirror, false, NewPhoton(1, 0, West)},
+		{NewPhoton(1, 0, West), RightMirror, true, NewPhoton(1, 1, South)},
+		{NewPhoton(1, 0, North), LeftMirror, true, NewPhoton(0, 0, West)},
+		{NewPhoton(1, 0, North), RightMirror, true, NewPhoton(2, 0, East)},
+		{NewPhoton(1, 0, South), LeftMirror, true, NewPhoton(2, 0, East)},
+		{NewPhoton(1, 0, South), RightMirror, true, NewPhoton(0, 0, West)},
+
+		{NewPhoton(grid.Bounds.Width-1, 0, East), LeftMirror, true, NewPhoton(grid.Bounds.Width-1, 1, South)},
+		{NewPhoton(grid.Bounds.Width-1, 0, East), RightMirror, false, NewPhoton(grid.Bounds.Width-1, 0, East)},
+		{NewPhoton(grid.Bounds.Width-1, 0, West), LeftMirror, false, NewPhoton(grid.Bounds.Width-1, 0, West)},
+		{NewPhoton(grid.Bounds.Width-1, 0, West), RightMirror, true, NewPhoton(grid.Bounds.Width-1, 1, South)},
+		{NewPhoton(grid.Bounds.Width-1, 0, North), LeftMirror, true, NewPhoton(grid.Bounds.Width-2, 0, West)},
+		{NewPhoton(grid.Bounds.Width-1, 0, North), RightMirror, false, NewPhoton(grid.Bounds.Width-1, 0, North)},
+		{NewPhoton(grid.Bounds.Width-1, 0, South), LeftMirror, false, NewPhoton(grid.Bounds.Width-1, 0, South)},
+		{NewPhoton(grid.Bounds.Width-1, 0, South), RightMirror, true, NewPhoton(grid.Bounds.Width-2, 0, West)},
+
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, East), LeftMirror, false, NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, East)},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, East), RightMirror, true, NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-2, North)},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, West), LeftMirror, true, NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-2, North)},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, West), RightMirror, false, NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, West)},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, North), LeftMirror, true, NewPhoton(grid.Bounds.Width-2, grid.Bounds.Height-1, West)},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, North), RightMirror, false, NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, North)},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, South), LeftMirror, false, NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, South)},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, South), RightMirror, true, NewPhoton(grid.Bounds.Width-2, grid.Bounds.Height-1, West)},
+
+		{NewPhoton(0, grid.Bounds.Height-1, East), LeftMirror, false, NewPhoton(0, grid.Bounds.Height-1, East)},
+		{NewPhoton(0, grid.Bounds.Height-1, East), RightMirror, true, NewPhoton(0, grid.Bounds.Height-2, North)},
+		{NewPhoton(0, grid.Bounds.Height-1, West), LeftMirror, true, NewPhoton(0, grid.Bounds.Height-2, North)},
+		{NewPhoton(0, grid.Bounds.Height-1, West), RightMirror, false, NewPhoton(0, grid.Bounds.Height-1, West)},
+		{NewPhoton(0, grid.Bounds.Height-1, North), LeftMirror, false, NewPhoton(0, grid.Bounds.Height-1, North)},
+		{NewPhoton(0, grid.Bounds.Height-1, North), RightMirror, true, NewPhoton(1, grid.Bounds.Height-1, East)},
+		{NewPhoton(0, grid.Bounds.Height-1, South), LeftMirror, true, NewPhoton(1, grid.Bounds.Height-1, East)},
+		{NewPhoton(0, grid.Bounds.Height-1, South), RightMirror, false, NewPhoton(0, grid.Bounds.Height-1, South)},
+	}
+
+	for _, test := range testCases {
+		cont, newPhoton := grid.UpdatePhotonMirror(test.photon, test.tile)
+
+		assert.Equal(t, test.expectedContinue, cont)
+		assert.Equal(t, test.expectedPhoton, newPhoton)
+	}
+}
+
+func TestUpdatePhotonSplitter(t *testing.T) {
+	content := `
+.|...\....
+|.-.\.....
+.....|-...
+........|.
+..........
+.........\
+..../.\\..
+.-.-/..|..
+.|....-|.\
+..//.|....`
+
+	grid := ParseGrid(content)
+
+	type testCase struct {
+		photon          Photon
+		tile            Tile
+		expectedPhotons []Photon
+	}
+
+	testCases := []testCase{
+		{NewPhoton(0, 0, East), VerticalSplitter, []Photon{NewPhoton(0, 1, South)}},
+		{NewPhoton(0, 0, East), HorizontalSplitter, []Photon{NewPhoton(1, 0, East)}},
+		{NewPhoton(1, 0, West), VerticalSplitter, []Photon{NewPhoton(1, 1, South)}},
+		{NewPhoton(1, 0, West), HorizontalSplitter, []Photon{NewPhoton(0, 0, West)}},
+		{NewPhoton(1, 0, North), VerticalSplitter, []Photon{}},
+		{NewPhoton(1, 0, North), HorizontalSplitter, []Photon{NewPhoton(0, 0, West), NewPhoton(2, 0, East)}},
+		{NewPhoton(1, 0, South), VerticalSplitter, []Photon{NewPhoton(1, 1, South)}},
+		{NewPhoton(1, 0, South), HorizontalSplitter, []Photon{NewPhoton(0, 0, West), NewPhoton(2, 0, East)}},
+
+		{NewPhoton(grid.Bounds.Width-1, 0, East), VerticalSplitter, []Photon{NewPhoton(grid.Bounds.Width-1, 1, South)}},
+		{NewPhoton(grid.Bounds.Width-1, 0, East), HorizontalSplitter, []Photon{}},
+		{NewPhoton(grid.Bounds.Width-1, 0, West), VerticalSplitter, []Photon{NewPhoton(grid.Bounds.Width-1, 1, South)}},
+		{NewPhoton(grid.Bounds.Width-1, 0, West), HorizontalSplitter, []Photon{NewPhoton(grid.Bounds.Width-2, 0, West)}},
+		{NewPhoton(grid.Bounds.Width-1, 0, North), VerticalSplitter, []Photon{}},
+		{NewPhoton(grid.Bounds.Width-1, 0, North), HorizontalSplitter, []Photon{NewPhoton(grid.Bounds.Width-2, 0, West)}},
+		{NewPhoton(grid.Bounds.Width-1, 0, South), VerticalSplitter, []Photon{NewPhoton(grid.Bounds.Width-1, 1, South)}},
+		{NewPhoton(grid.Bounds.Width-1, 0, South), HorizontalSplitter, []Photon{NewPhoton(grid.Bounds.Width-2, 0, West)}},
+
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, East), VerticalSplitter, []Photon{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-2, North)}},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, East), HorizontalSplitter, []Photon{}},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, West), VerticalSplitter, []Photon{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-2, North)}},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, West), HorizontalSplitter, []Photon{NewPhoton(grid.Bounds.Width-2, grid.Bounds.Height-1, West)}},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, North), VerticalSplitter, []Photon{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-2, North)}},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, North), HorizontalSplitter, []Photon{NewPhoton(grid.Bounds.Width-2, grid.Bounds.Height-1, West)}},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, South), VerticalSplitter, []Photon{}},
+		{NewPhoton(grid.Bounds.Width-1, grid.Bounds.Height-1, South), HorizontalSplitter, []Photon{NewPhoton(grid.Bounds.Width-2, grid.Bounds.Height-1, West)}},
+
+		{NewPhoton(0, grid.Bounds.Height-1, East), VerticalSplitter, []Photon{NewPhoton(0, grid.Bounds.Height-2, North)}},
+		{NewPhoton(0, grid.Bounds.Height-1, East), HorizontalSplitter, []Photon{NewPhoton(1, grid.Bounds.Height-1, East)}},
+		{NewPhoton(0, grid.Bounds.Height-1, West), VerticalSplitter, []Photon{NewPhoton(0, grid.Bounds.Height-2, North)}},
+		{NewPhoton(0, grid.Bounds.Height-1, West), HorizontalSplitter, []Photon{}},
+		{NewPhoton(0, grid.Bounds.Height-1, North), VerticalSplitter, []Photon{NewPhoton(0, grid.Bounds.Height-2, North)}},
+		{NewPhoton(0, grid.Bounds.Height-1, North), HorizontalSplitter, []Photon{NewPhoton(1, grid.Bounds.Height-1, East)}},
+		{NewPhoton(0, grid.Bounds.Height-1, South), VerticalSplitter, []Photon{}},
+		{NewPhoton(0, grid.Bounds.Height-1, South), HorizontalSplitter, []Photon{NewPhoton(1, grid.Bounds.Height-1, East)}},
+	}
+
+	for _, test := range testCases {
+		photons := grid.UpdatePhotonSplitter(test.photon, test.tile)
+
+		assert.Equal(t, test.expectedPhotons, photons)
+	}
+}
+
+func TestGetEnergizedTiles(t *testing.T) {
+	content := `
+.|...\....
+|.-.\.....
+.....|-...
+........|.
+..........
+.........\
+..../.\\..
+.-.-/..|..
+.|....-|.\
+..//.|....`
+
+	expectedDescription := `
+######....
+.#...#....
+.#...#####
+.#...##...
+.#...##...
+.#...##...
+.#..####..
+########..
+.#######..
+.#...#.#..`
+
+	grid := ParseGrid(content)
+
+	initialPhoton := Photon{
+		Position:  utilities.NewPoint2D(0, 0),
+		Direction: East,
+	}
+
+	assert.Equal(t, strings.TrimSpace(expectedDescription), GetEnergizedTiles(grid, initialPhoton))
+}
+
+func TestGetEnergizedTilesCount(t *testing.T) {
+	content := `
+.|...\....
+|.-.\.....
+.....|-...
+........|.
+..........
+.........\
+..../.\\..
+.-.-/..|..
+.|....-|.\
+..//.|....`
+
+	grid := ParseGrid(content)
+
+	initialPhoton := Photon{
+		Position:  utilities.NewPoint2D(0, 0),
+		Direction: East,
+	}
+
+	assert.Equal(t, 46, GetEnergizedTilesCount(grid, initialPhoton))
+}
+
+func TestGetMaxEnergizedTilesCount(t *testing.T) {
+	content := `
+.|...\....
+|.-.\.....
+.....|-...
+........|.
+..........
+.........\
+..../.\\..
+.-.-/..|..
+.|....-|.\
+..//.|....`
+
+	grid := ParseGrid(content)
+
+	assert.Equal(t, 51, GetMaxEnergizedTilesCount(grid))
 }
